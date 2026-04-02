@@ -115,16 +115,7 @@ export function AdminScreen() {
               <ScrollView style={{ marginTop: 6 }} contentContainerStyle={{ paddingBottom: 24 }}>
                 {works.length === 0 ? <Text style={styles.meta}>Немає робіт у Firestore.</Text> : null}
                 {works.map((item) => (
-                  <Pressable
-                    key={item.id}
-                    style={styles.card}
-                    onPress={() => {
-                      setEditWorkId(item.id);
-                      setEditDescription(item.description);
-                      setEditAmount(String(item.amount ?? 0));
-                      setEditOpen(true);
-                    }}
-                  >
+                  <View key={item.id} style={styles.card}>
                     <View style={styles.cardTop}>
                       <Text style={styles.cardTitle}>{item.userEmail}</Text>
                       <Text style={styles.cardMeta}>{item.workDate}</Text>
@@ -132,7 +123,18 @@ export function AdminScreen() {
                     <Text style={styles.cardBody}>{item.categoryName}</Text>
                     <Text style={styles.cardBody}>{item.description}</Text>
                     <Text style={styles.cardAmount}>{item.amount} грн</Text>
-                  </Pressable>
+                    <Pressable
+                      style={styles.editButton}
+                      onPress={() => {
+                        setEditWorkId(item.id);
+                        setEditDescription(item.description);
+                        setEditAmount(String(item.amount ?? 0));
+                        setEditOpen(true);
+                      }}
+                    >
+                      <Text style={styles.editButtonText}>Редагувати</Text>
+                    </Pressable>
+                  </View>
                 ))}
               </ScrollView>
             </>
@@ -317,6 +319,17 @@ const styles = StyleSheet.create({
   cardMeta: { color: "#5b6475", fontSize: 12 },
   cardBody: { marginTop: 6, color: "#1a2740" },
   cardAmount: { marginTop: 10, fontWeight: "900", color: "#0b1220" },
+  editButton: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff",
+  },
+  editButtonText: { color: "#3158f5", fontWeight: "800" },
   primaryButton: { backgroundColor: "#3158f5", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center" },
   primaryButtonText: { color: "#fff", fontWeight: "800" },
   secondaryButton: { backgroundColor: "#ffffff", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center", borderWidth: 1, borderColor: "#dbe1ef" },
