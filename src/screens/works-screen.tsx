@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/auth-context";
 import { listCategories } from "../entities/category/category-service";
 import type { Category } from "../entities/category/types";
@@ -76,13 +77,21 @@ export function WorksScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.title}>Роботи</Text>
-          <Text style={styles.meta}>{user?.email}</Text>
+        <View style={styles.topRow}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.title}>Роботи</Text>
+          </View>
+          <Pressable style={styles.primaryButton} onPress={() => setCreateOpen(true)}>
+            <Text style={styles.primaryButtonText}>+ Додати</Text>
+          </Pressable>
         </View>
-        <Pressable style={styles.primaryButton} onPress={() => setCreateOpen(true)}>
-          <Text style={styles.primaryButtonText}>+ Додати</Text>
-        </Pressable>
+        <View style={styles.metaRow}>
+          <Text style={styles.meta} numberOfLines={1}>{user?.email}</Text>
+          <Pressable style={styles.logoutChip} onPress={() => logout()}>
+            <Ionicons name="log-out-outline" size={14} color="#3158f5" />
+            <Text style={styles.logoutChipText}>Вийти</Text>
+          </Pressable>
+        </View>
       </View>
 
       {loading ? (
@@ -170,12 +179,6 @@ export function WorksScreen() {
           )}
         />
       )}
-
-      <View style={styles.footer}>
-        <Pressable style={styles.secondaryButton} onPress={() => logout()}>
-          <Text style={styles.secondaryButtonText}>Вийти</Text>
-        </Pressable>
-      </View>
 
       <Modal visible={createOpen} animationType="slide" onRequestClose={() => setCreateOpen(false)}>
         <View style={styles.modalContainer}>
@@ -267,10 +270,24 @@ export function WorksScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f6f8ff" },
   container: { flex: 1, padding: 16, gap: 12, backgroundColor: "#f6f8ff" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  header: { gap: 8 },
+  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   headerLeft: { flex: 1 },
   title: { fontSize: 22, fontWeight: "800", color: "#0b1220" },
-  meta: { color: "#5b6475", marginTop: 2 },
+  metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 2 },
+  meta: { color: "#5b6475", marginTop: 2, flex: 1, marginRight: 8 },
+  logoutChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "#fff",
+  },
+  logoutChipText: { color: "#3158f5", fontWeight: "800", fontSize: 12 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   error: { color: "#ce2e2e", textAlign: "center" },
   emptyContainer: { flexGrow: 1, alignItems: "center", justifyContent: "center", paddingVertical: 40 },
@@ -281,7 +298,6 @@ const styles = StyleSheet.create({
   cardMeta: { color: "#5b6475", fontSize: 12 },
   cardBody: { marginTop: 6, color: "#1a2740" },
   cardAmount: { marginTop: 10, fontWeight: "800", color: "#0b1220" },
-  footer: { paddingTop: 6 },
   primaryButton: { backgroundColor: "#3158f5", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center" },
   primaryButtonText: { color: "#fff", fontWeight: "800" },
   secondaryButton: { backgroundColor: "#ffffff", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center", borderWidth: 1, borderColor: "#dbe1ef" },

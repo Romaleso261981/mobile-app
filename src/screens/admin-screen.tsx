@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/auth-context";
 import { addCategory, listCategories } from "../entities/category/category-service";
 import type { Category } from "../entities/category/types";
@@ -10,7 +11,7 @@ import { listAllWorkEntries, updateWorkEntryAdmin } from "../entities/work/work-
 import type { WorkEntry } from "../entities/work/types";
 
 export function AdminScreen() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const isAdmin = user?.role === "admin";
 
   const [loading, setLoading] = useState(true);
@@ -85,6 +86,13 @@ export function AdminScreen() {
               <Text style={styles.primaryButtonText}>+ Додати</Text>
             </Pressable>
           </View>
+        </View>
+        <View style={styles.metaRow}>
+          <Text style={styles.meta}>{user?.email}</Text>
+          <Pressable style={styles.logoutChip} onPress={() => logout()}>
+            <Ionicons name="log-out-outline" size={14} color="#3158f5" />
+            <Text style={styles.logoutChipText}>Вийти</Text>
+          </Pressable>
         </View>
 
       {loading ? (
@@ -283,7 +291,20 @@ const styles = StyleSheet.create({
   actionsRow: { flexDirection: "row", gap: 10 },
   actionButton: { flex: 1 },
   title: { fontSize: 22, fontWeight: "800", color: "#0b1220" },
+  metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   meta: { color: "#5b6475", marginTop: 2 },
+  logoutChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "#fff",
+  },
+  logoutChipText: { color: "#3158f5", fontWeight: "800", fontSize: 12 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   error: { color: "#ce2e2e", textAlign: "center" },
   sectionTitle: { marginTop: 6, fontWeight: "900", color: "#0b1220" },
