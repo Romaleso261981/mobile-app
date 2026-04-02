@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/auth-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../App";
@@ -13,34 +14,37 @@ export function RegisterScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Реєстрація</Text>
-      <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" placeholder="Email" />
-      <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry placeholder="Пароль (мін. 6 символів)" />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Pressable
-        style={[styles.button, loading ? styles.buttonDisabled : null]}
-        disabled={loading}
-        onPress={async () => {
-          setError(null);
-          try {
-            await register(email.trim(), password);
-          } catch {
-            setError("Не вдалося зареєструватися.");
-          }
-        }}
-      >
-        <Text style={styles.buttonText}>{loading ? "..." : "Створити акаунт"}</Text>
-      </Pressable>
-      <Pressable onPress={() => navigation.navigate("AuthLogin")}>
-        <Text style={styles.link}>Вже маєш акаунт? Вхід</Text>
-      </Pressable>
-    </View>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <View style={styles.container}>
+        <Text style={styles.title}>Реєстрація</Text>
+        <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" placeholder="Email" />
+        <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry placeholder="Пароль (мін. 6 символів)" />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Pressable
+          style={[styles.button, loading ? styles.buttonDisabled : null]}
+          disabled={loading}
+          onPress={async () => {
+            setError(null);
+            try {
+              await register(email.trim(), password);
+            } catch {
+              setError("Не вдалося зареєструватися.");
+            }
+          }}
+        >
+          <Text style={styles.buttonText}>{loading ? "..." : "Створити акаунт"}</Text>
+        </Pressable>
+        <Pressable onPress={() => navigation.navigate("AuthLogin")}>
+          <Text style={styles.link}>Вже маєш акаунт? Вхід</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, gap: 12, justifyContent: "center" },
+  safe: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1, padding: 16, gap: 12, justifyContent: "center", backgroundColor: "#fff" },
   title: { fontSize: 22, fontWeight: "700", textAlign: "center", marginBottom: 8 },
   input: { borderWidth: 1, borderColor: "#dbe1ef", borderRadius: 10, padding: 12, backgroundColor: "#fff" },
   button: { backgroundColor: "#3158f5", borderRadius: 10, padding: 12, alignItems: "center" },

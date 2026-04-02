@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/auth-context";
 import { listCategories } from "../entities/category/category-service";
 import type { Category } from "../entities/category/types";
@@ -71,7 +72,8 @@ export function WorksScreen() {
   }, [user?.uid]);
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.title}>Роботи</Text>
@@ -254,11 +256,13 @@ export function WorksScreen() {
           </View>
         </Pressable>
       </Modal>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: "#f6f8ff" },
   container: { flex: 1, padding: 16, gap: 12, backgroundColor: "#f6f8ff" },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   headerLeft: { flex: 1 },

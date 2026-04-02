@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/auth-context";
 import { addCategory, listCategories } from "../entities/category/category-service";
 import type { Category } from "../entities/category/types";
@@ -18,6 +19,7 @@ export function AdminScreen() {
 
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [categoryName, setCategoryName] = useState("");
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editWorkId, setEditWorkId] = useState<string | null>(null);
@@ -48,23 +50,31 @@ export function AdminScreen() {
 
   if (!isAdmin) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Адмін</Text>
-        <Text style={styles.meta}>Доступ лише для ролі admin.</Text>
-      </View>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <View style={styles.container}>
+          <Text style={styles.title}>Адмін</Text>
+          <Text style={styles.meta}>Доступ лише для ролі admin.</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.title}>Адмін</Text>
           <Text style={styles.meta}>{user?.email}</Text>
         </View>
-        <Pressable style={styles.primaryButton} onPress={() => setCreateCategoryOpen(true)}>
-          <Text style={styles.primaryButtonText}>+ Категорія</Text>
-        </Pressable>
+          <View style={styles.headerButtons}>
+            <Pressable style={styles.secondaryButton} onPress={() => setCategoriesOpen(true)}>
+              <Text style={styles.secondaryButtonText}>Категорії</Text>
+            </Pressable>
+            <Pressable style={styles.primaryButton} onPress={() => setCreateCategoryOpen(true)}>
+              <Text style={styles.primaryButtonText}>+ Додати</Text>
+            </Pressable>
+          </View>
       </View>
 
       {loading ? (
@@ -80,21 +90,7 @@ export function AdminScreen() {
         </View>
       ) : (
         <>
-          <Text style={styles.sectionTitle}>Категорії ({categories.length})</Text>
-          <FlatList
-            data={categories}
-            keyExtractor={(item) => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8 }}
-            renderItem={({ item }) => (
-              <View style={styles.pill}>
-                <Text style={styles.pillText}>{item.name}</Text>
-              </View>
-            )}
-          />
-
-          <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Роботи ({works.length})</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Роботи ({works.length})</Text>
           <FlatList
             data={works}
             keyExtractor={(item) => item.id}
@@ -154,6 +150,36 @@ export function AdminScreen() {
         </View>
       </Modal>
 
+      <Modal visible={categoriesOpen} animationType="slide" onRequestClose={() => setCategoriesOpen(false)}>
+        <View style={styles.modalContainer}>
+          <Text style={styles.modalTitle}>Категорії ({categories.length})</Text>
+          <FlatList
+            data={categories}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <View style={styles.categoryRow}>
+                <Text style={styles.categoryRowText}>{item.name}</Text>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={styles.meta}>Категорій поки немає.</Text>}
+          />
+          <View style={styles.modalActions}>
+            <Pressable style={styles.secondaryButton} onPress={() => setCategoriesOpen(false)}>
+              <Text style={styles.secondaryButtonText}>Закрити</Text>
+            </Pressable>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={() => {
+                setCategoriesOpen(false);
+                setCreateCategoryOpen(true);
+              }}
+            >
+              <Text style={styles.primaryButtonText}>+ Додати</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={editOpen} animationType="slide" onRequestClose={() => setEditOpen(false)}>
         <View style={styles.modalContainer}>
           <Text style={styles.modalTitle}>Редагувати роботу</Text>
@@ -192,21 +218,24 @@ export function AdminScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: "#f6f8ff" },
   container: { flex: 1, padding: 16, gap: 12, backgroundColor: "#f6f8ff" },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   headerLeft: { flex: 1 },
+  headerButtons: { flexDirection: "row", gap: 10, alignItems: "center" },
   title: { fontSize: 22, fontWeight: "800", color: "#0b1220" },
   meta: { color: "#5b6475", marginTop: 2 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   error: { color: "#ce2e2e", textAlign: "center" },
   sectionTitle: { marginTop: 6, fontWeight: "900", color: "#0b1220" },
-  pill: { backgroundColor: "#ffffff", borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: "#e7ecfb" },
-  pillText: { fontWeight: "800", color: "#0b1220" },
+  categoryRow: { backgroundColor: "#fff", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#e7ecfb", marginBottom: 10 },
+  categoryRowText: { fontWeight: "800", color: "#0b1220" },
   card: { backgroundColor: "#fff", borderRadius: 14, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#e7ecfb" },
   cardTop: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 10 },
   cardTitle: { fontWeight: "900", color: "#0b1220" },
