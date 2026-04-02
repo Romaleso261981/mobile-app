@@ -1,0 +1,52 @@
+import React, { useState } from "react";
+import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { useAuth } from "../auth/auth-context";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../../App";
+
+type Props = NativeStackScreenProps<RootStackParamList, "AuthRegister">;
+
+export function RegisterScreen({ navigation }: Props) {
+  const { register, loading } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Реєстрація</Text>
+      <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" placeholder="Email" />
+      <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry placeholder="Пароль (мін. 6 символів)" />
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Pressable
+        style={[styles.button, loading ? styles.buttonDisabled : null]}
+        disabled={loading}
+        onPress={async () => {
+          setError(null);
+          try {
+            await register(email.trim(), password);
+          } catch {
+            setError("Не вдалося зареєструватися.");
+          }
+        }}
+      >
+        <Text style={styles.buttonText}>{loading ? "..." : "Створити акаунт"}</Text>
+      </Pressable>
+      <Pressable onPress={() => navigation.navigate("AuthLogin")}>
+        <Text style={styles.link}>Вже маєш акаунт? Вхід</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 16, gap: 12, justifyContent: "center" },
+  title: { fontSize: 22, fontWeight: "700", textAlign: "center", marginBottom: 8 },
+  input: { borderWidth: 1, borderColor: "#dbe1ef", borderRadius: 10, padding: 12, backgroundColor: "#fff" },
+  button: { backgroundColor: "#3158f5", borderRadius: 10, padding: 12, alignItems: "center" },
+  buttonDisabled: { opacity: 0.6 },
+  buttonText: { color: "#fff", fontWeight: "700" },
+  link: { textAlign: "center", color: "#3158f5", marginTop: 10 },
+  error: { color: "#ce2e2e", textAlign: "center" },
+});
+
