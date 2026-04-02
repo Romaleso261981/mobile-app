@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/auth-context";
-import { createSalaryPayout, listUserSalaryPayouts } from "../entities/payout/payout-service";
+import { createSalaryPayout, listAllSalaryPayouts, listUserSalaryPayouts } from "../entities/payout/payout-service";
 import type { SalaryPayout } from "../entities/payout/types";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
 
@@ -45,7 +45,7 @@ export function ExpensesScreen() {
     setError(null);
     setLoading(true);
     try {
-      setItems(await listUserSalaryPayouts(user.uid));
+      setItems(user.role === "admin" ? await listAllSalaryPayouts() : await listUserSalaryPayouts(user.uid));
     } catch {
       setError("Не вдалося завантажити виплати.");
     } finally {
@@ -56,7 +56,7 @@ export function ExpensesScreen() {
   useEffect(() => {
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid]);
+  }, [user?.uid, user?.role]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -137,6 +137,7 @@ export function ExpensesScreen() {
                 <Text style={styles.cardTitle}>{item.payoutDate}</Text>
                 <Text style={styles.cardAmount}>{item.amount} грн</Text>
               </View>
+              {user?.role === "admin" ? <Text style={styles.cardMeta}>{item.userEmail}</Text> : null}
               <Text style={styles.cardBody}>{item.description}</Text>
             </View>
           )}
@@ -178,7 +179,7 @@ export function ExpensesScreen() {
                   setCreateOpen(false);
                   setDescription("");
                   setAmount("");
-                  setItems(await listUserSalaryPayouts(user.uid));
+                  setItems(user.role === "admin" ? await listAllSalaryPayouts() : await listUserSalaryPayouts(user.uid));
                 } catch {
                   setError("Не вдалося створити виплату.");
                 } finally {
@@ -210,6 +211,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: "#fff", borderRadius: 14, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#e7ecfb" },
   cardTop: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 10 },
   cardTitle: { fontWeight: "800", color: "#0b1220" },
+  cardMeta: { marginTop: 2, color: "#5b6475", fontSize: 12 },
   cardAmount: { fontWeight: "900", color: "#0b1220" },
   cardBody: { marginTop: 6, color: "#1a2740" },
   primaryButton: { backgroundColor: "#3158f5", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center" },

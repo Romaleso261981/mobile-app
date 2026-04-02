@@ -4,6 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/auth-context";
 import { addCategory, listCategories } from "../entities/category/category-service";
 import type { Category } from "../entities/category/types";
+import { listAllSalaryPayouts } from "../entities/payout/payout-service";
+import type { SalaryPayout } from "../entities/payout/types";
 import { listAllWorkEntries, updateWorkEntryAdmin } from "../entities/work/work-service";
 import type { WorkEntry } from "../entities/work/types";
 
@@ -16,6 +18,8 @@ export function AdminScreen() {
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [works, setWorks] = useState<WorkEntry[]>([]);
+  const [payouts, setPayouts] = useState<SalaryPayout[]>([]);
+  const [adminView, setAdminView] = useState<"works" | "expenses">("works");
 
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [categoryName, setCategoryName] = useState("");
@@ -33,9 +37,10 @@ export function AdminScreen() {
     setError(null);
     setLoading(true);
     try {
-      const [cats, allWorks] = await Promise.all([listCategories(), listAllWorkEntries()]);
+      const [cats, allWorks, allPayouts] = await Promise.all([listCategories(), listAllWorkEntries(), listAllSalaryPayouts()]);
       setCategories(cats);
       setWorks(allWorks);
+      setPayouts(allPayouts);
     } catch {
       setError("Не вдалося завантажити адмін-дані.");
     } finally {
@@ -64,6 +69,12 @@ export function AdminScreen() {
       <View style={styles.container}>
       <View style={styles.header}>
           <View style={styles.headerButtons}>
+            <Pressable style={[styles.secondaryButton, adminView === "works" ? styles.tabActive : null]} onPress={() => setAdminView("works")}>
+              <Text style={styles.secondaryButtonText}>Роботи</Text>
+            </Pressable>
+            <Pressable style={[styles.secondaryButton, adminView === "expenses" ? styles.tabActive : null]} onPress={() => setAdminView("expenses")}>
+              <Text style={styles.secondaryButtonText}>Витрати</Text>
+            </Pressable>
             <Pressable style={styles.secondaryButton} onPress={() => setCategoriesOpen(true)}>
               <Text style={styles.secondaryButtonText}>Категорії</Text>
             </Pressable>
@@ -86,31 +97,54 @@ export function AdminScreen() {
         </View>
       ) : (
         <>
-          <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Роботи ({works.length})</Text>
-          <FlatList
-            data={works}
-            keyExtractor={(item) => item.id}
-            style={{ marginTop: 6 }}
-            renderItem={({ item }) => (
-              <Pressable
-                style={styles.card}
-                onPress={() => {
-                  setEditWorkId(item.id);
-                  setEditDescription(item.description);
-                  setEditAmount(String(item.amount ?? 0));
-                  setEditOpen(true);
-                }}
-              >
-                <View style={styles.cardTop}>
-                  <Text style={styles.cardTitle}>{item.userEmail}</Text>
-                  <Text style={styles.cardMeta}>{item.workDate}</Text>
-                </View>
-                <Text style={styles.cardBody}>{item.categoryName}</Text>
-                <Text style={styles.cardBody}>{item.description}</Text>
-                <Text style={styles.cardAmount}>{item.amount} грн</Text>
-              </Pressable>
-            )}
-          />
+          {adminView === "works" ? (
+            <>
+              <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Роботи ({works.length})</Text>
+              <FlatList
+                data={works}
+                keyExtractor={(item) => item.id}
+                style={{ marginTop: 6 }}
+                renderItem={({ item }) => (
+                  <Pressable
+                    style={styles.card}
+                    onPress={() => {
+                      setEditWorkId(item.id);
+                      setEditDescription(item.description);
+                      setEditAmount(String(item.amount ?? 0));
+                      setEditOpen(true);
+                    }}
+                  >
+                    <View style={styles.cardTop}>
+                      <Text style={styles.cardTitle}>{item.userEmail}</Text>
+                      <Text style={styles.cardMeta}>{item.workDate}</Text>
+                    </View>
+                    <Text style={styles.cardBody}>{item.categoryName}</Text>
+                    <Text style={styles.cardBody}>{item.description}</Text>
+                    <Text style={styles.cardAmount}>{item.amount} грн</Text>
+                  </Pressable>
+                )}
+              />
+            </>
+          ) : (
+            <>
+              <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Витрати ({payouts.length})</Text>
+              <FlatList
+                data={payouts}
+                keyExtractor={(item) => item.id}
+                style={{ marginTop: 6 }}
+                renderItem={({ item }) => (
+                  <View style={styles.card}>
+                    <View style={styles.cardTop}>
+                      <Text style={styles.cardTitle}>{item.userEmail}</Text>
+                      <Text style={styles.cardMeta}>{item.payoutDate}</Text>
+                    </View>
+                    <Text style={styles.cardBody}>{item.description}</Text>
+                    <Text style={styles.cardAmount}>{item.amount} грн</Text>
+                  </View>
+                )}
+              />
+            </>
+          )}
         </>
       )}
 
@@ -224,6 +258,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, gap: 12, backgroundColor: "#f6f8ff" },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 12 },
   headerButtons: { flexDirection: "row", gap: 10, alignItems: "center" },
+  tabActive: { borderColor: "#3158f5", backgroundColor: "#eef2ff" },
   title: { fontSize: 22, fontWeight: "800", color: "#0b1220" },
   meta: { color: "#5b6475", marginTop: 2 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },

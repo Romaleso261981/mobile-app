@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/auth-context";
 import { listCategories } from "../entities/category/category-service";
 import type { Category } from "../entities/category/types";
-import { createWorkEntry, listUserWorkEntries } from "../entities/work/work-service";
+import { createWorkEntry, listAllWorkEntries, listUserWorkEntries } from "../entities/work/work-service";
 import type { WorkEntry } from "../entities/work/types";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
 
@@ -31,10 +31,11 @@ export function WorksScreen() {
   const [workDate, setWorkDate] = useState(today);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [categoryId, setCategoryId] = useState<string>("");
+  const [filterCategoryId, setFilterCategoryId] = useState<string>("");
+  const [formCategoryId, setFormCategoryId] = useState<string>("");
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
 
-  const selectedCategory = useMemo(() => categories.find((c) => c.id === categoryId) ?? null, [categories, categoryId]);
+  const selectedCategory = useMemo(() => categories.find((c) => c.id === formCategoryId) ?? null, [categories, formCategoryId]);
 
   const filteredItems = useMemo(() => {
     const s = searchTerm.trim().toLowerCase();
@@ -42,11 +43,11 @@ export function WorksScreen() {
       const matchesSearch = !s
         ? true
         : item.description.toLowerCase().includes(s) || item.workDate.includes(s) || item.categoryName.toLowerCase().includes(s);
-      const matchesCategory = categoryId ? item.categoryId === categoryId : true;
+      const matchesCategory = filterCategoryId ? item.categoryId === filterCategoryId : true;
       const matchesDate = matchesDateString(item.workDate, datePreset, dateYear, dateMonth, dateFrom, dateTo);
       return matchesSearch && matchesCategory && matchesDate;
     });
-  }, [categoryId, dateFrom, dateMonth, datePreset, dateTo, dateYear, items, searchTerm]);
+  }, [dateFrom, dateMonth, datePreset, dateTo, dateYear, filterCategoryId, items, searchTerm]);
 
   const filteredTotal = useMemo(() => filteredItems.reduce((acc, item) => acc + (item.amount ?? 0), 0), [filteredItems]);
 
@@ -55,10 +56,10 @@ export function WorksScreen() {
     setError(null);
     setLoading(true);
     try {
-      const [cats, works] = await Promise.all([listCategories(), listUserWorkEntries(user.uid)]);
+      const [cats, works] = await Promise.all([listCategories(), user.role === "admin" ? listAllWorkEntries() : listUserWorkEntries(user.uid)]);
       setCategories(cats);
       setItems(works);
-      if (!categoryId && cats[0]) setCategoryId(cats[0].id);
+      if (!formCategoryId && cats[0]) setFormCategoryId(cats[0].id);
     } catch (e) {
       setError("Не вдалося завантажити дані.");
     } finally {
@@ -69,7 +70,7 @@ export function WorksScreen() {
   useEffect(() => {
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid]);
+  }, [user?.uid, user?.role]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -111,7 +112,9 @@ export function WorksScreen() {
 
               <View style={styles.row}>
                 <Pressable style={[styles.picker, styles.rowGrow]} onPress={() => setCategoryPickerOpen(true)}>
-                  <Text style={styles.pickerText}>{selectedCategory?.name ?? "Усі категорії"}</Text>
+                  <Text style={styles.pickerText}>
+                    {filterCategoryId ? categories.find((c) => c.id === filterCategoryId)?.name ?? "Категорія" : "Усі категорії"}
+                  </Text>
                 </Pressable>
                 <Pressable
                   style={styles.secondaryButton}
@@ -200,7 +203,7 @@ export function WorksScreen() {
               style={styles.primaryButton}
               onPress={async () => {
                 if (!user) return;
-                const category = categories.find((c) => c.id === categoryId);
+                const category = categories.find((c) => c.id === formCategoryId);
                 if (!category) {
                   setError("Категорію не знайдено.");
                   setCreateOpen(false);
@@ -220,7 +223,7 @@ export function WorksScreen() {
                   setCreateOpen(false);
                   setDescription("");
                   setAmount("");
-                  setItems(await listUserWorkEntries(user.uid));
+                  setItems(user.role === "admin" ? await listAllWorkEntries() : await listUserWorkEntries(user.uid));
                 } catch {
                   setError("Не вдалося створити запис.");
                 } finally {
@@ -243,9 +246,9 @@ export function WorksScreen() {
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <Pressable
-                  style={[styles.sheetRow, item.id === categoryId ? styles.sheetRowActive : null]}
+                  style={[styles.sheetRow, item.id === filterCategoryId ? styles.sheetRowActive : null]}
                   onPress={() => {
-                    setCategoryId(item.id);
+                    setFilterCategoryId(item.id);
                     setCategoryPickerOpen(false);
                   }}
                 >
