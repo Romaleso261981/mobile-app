@@ -12,6 +12,7 @@ import type { WorkEntry } from "../entities/work/types";
 
 export function AdminScreen() {
   const { user, logout } = useAuth();
+  const PAGE_SIZE = 5;
   const isAdmin = user?.role === "admin";
 
   const [loading, setLoading] = useState(true);
@@ -21,6 +22,8 @@ export function AdminScreen() {
   const [works, setWorks] = useState<WorkEntry[]>([]);
   const [payouts, setPayouts] = useState<SalaryPayout[]>([]);
   const [adminView, setAdminView] = useState<"works" | "expenses">("works");
+  const [worksPage, setWorksPage] = useState(1);
+  const [payoutsPage, setPayoutsPage] = useState(1);
 
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [categoryName, setCategoryName] = useState("");
@@ -32,6 +35,16 @@ export function AdminScreen() {
   const [editAmount, setEditAmount] = useState("");
 
   const selectedWork = useMemo(() => works.find((w) => w.id === editWorkId) ?? null, [works, editWorkId]);
+  const worksPageCount = useMemo(() => Math.max(1, Math.ceil(works.length / PAGE_SIZE)), [works.length]);
+  const payoutsPageCount = useMemo(() => Math.max(1, Math.ceil(payouts.length / PAGE_SIZE)), [payouts.length]);
+  const paginatedWorks = useMemo(() => {
+    const from = (worksPage - 1) * PAGE_SIZE;
+    return works.slice(from, from + PAGE_SIZE);
+  }, [works, worksPage]);
+  const paginatedPayouts = useMemo(() => {
+    const from = (payoutsPage - 1) * PAGE_SIZE;
+    return payouts.slice(from, from + PAGE_SIZE);
+  }, [payouts, payoutsPage]);
 
   async function loadAll() {
     if (!user || !isAdmin) return;
@@ -53,6 +66,19 @@ export function AdminScreen() {
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.role]);
+
+  useEffect(() => {
+    if (worksPage > worksPageCount) setWorksPage(worksPageCount);
+  }, [worksPage, worksPageCount]);
+
+  useEffect(() => {
+    if (payoutsPage > payoutsPageCount) setPayoutsPage(payoutsPageCount);
+  }, [payoutsPage, payoutsPageCount]);
+
+  useEffect(() => {
+    setWorksPage(1);
+    setPayoutsPage(1);
+  }, [adminView]);
 
   if (!isAdmin) {
     return (
@@ -114,7 +140,7 @@ export function AdminScreen() {
               <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Роботи ({works.length})</Text>
               <ScrollView style={{ marginTop: 6 }} contentContainerStyle={{ paddingBottom: 24 }}>
                 {works.length === 0 ? <Text style={styles.meta}>Немає робіт у Firestore.</Text> : null}
-                {works.map((item) => (
+                {paginatedWorks.map((item) => (
                   <View key={item.id} style={styles.card}>
                     <View style={styles.cardTop}>
                       <Text style={styles.cardTitle}>{item.userEmail}</Text>
@@ -136,6 +162,23 @@ export function AdminScreen() {
                     </Pressable>
                   </View>
                 ))}
+                {works.length ? (
+                  <View style={styles.pagination}>
+                    <Pressable style={[styles.secondaryButton, worksPage === 1 ? styles.disabledButton : null]} disabled={worksPage === 1} onPress={() => setWorksPage((p) => Math.max(1, p - 1))}>
+                      <Text style={styles.secondaryButtonText}>Назад</Text>
+                    </Pressable>
+                    <Text style={styles.pageText}>
+                      Сторінка {worksPage} / {worksPageCount}
+                    </Text>
+                    <Pressable
+                      style={[styles.secondaryButton, worksPage === worksPageCount ? styles.disabledButton : null]}
+                      disabled={worksPage === worksPageCount}
+                      onPress={() => setWorksPage((p) => Math.min(worksPageCount, p + 1))}
+                    >
+                      <Text style={styles.secondaryButtonText}>Далі</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
               </ScrollView>
             </>
           ) : (
@@ -143,7 +186,7 @@ export function AdminScreen() {
               <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Витрати ({payouts.length})</Text>
               <ScrollView style={{ marginTop: 6 }} contentContainerStyle={{ paddingBottom: 24 }}>
                 {payouts.length === 0 ? <Text style={styles.meta}>Немає виплат у Firestore (collection `salaryPayouts`).</Text> : null}
-                {payouts.map((item) => (
+                {paginatedPayouts.map((item) => (
                   <View key={item.id} style={styles.card}>
                     <View style={styles.cardTop}>
                       <Text style={styles.cardTitle}>{item.userEmail}</Text>
@@ -153,6 +196,23 @@ export function AdminScreen() {
                     <Text style={styles.cardAmount}>{item.amount} грн</Text>
                   </View>
                 ))}
+                {payouts.length ? (
+                  <View style={styles.pagination}>
+                    <Pressable style={[styles.secondaryButton, payoutsPage === 1 ? styles.disabledButton : null]} disabled={payoutsPage === 1} onPress={() => setPayoutsPage((p) => Math.max(1, p - 1))}>
+                      <Text style={styles.secondaryButtonText}>Назад</Text>
+                    </Pressable>
+                    <Text style={styles.pageText}>
+                      Сторінка {payoutsPage} / {payoutsPageCount}
+                    </Text>
+                    <Pressable
+                      style={[styles.secondaryButton, payoutsPage === payoutsPageCount ? styles.disabledButton : null]}
+                      disabled={payoutsPage === payoutsPageCount}
+                      onPress={() => setPayoutsPage((p) => Math.min(payoutsPageCount, p + 1))}
+                    >
+                      <Text style={styles.secondaryButtonText}>Далі</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
               </ScrollView>
             </>
           )}
@@ -340,5 +400,8 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: "#dbe1ef", borderRadius: 12, padding: 12, backgroundColor: "#fff" },
   textarea: { minHeight: 100, textAlignVertical: "top" },
   modalActions: { flexDirection: "row", gap: 12, marginTop: 10 },
+  pagination: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8, marginBottom: 6 },
+  pageText: { color: "#5b6475", fontWeight: "700" },
+  disabledButton: { opacity: 0.45 },
 });
 

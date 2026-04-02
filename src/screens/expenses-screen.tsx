@@ -9,6 +9,7 @@ import { matchesDateString, type DateFilterPreset } from "../shared/date-filter"
 
 export function ExpensesScreen() {
   const { user, logout } = useAuth();
+  const PAGE_SIZE = 5;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +24,7 @@ export function ExpensesScreen() {
   });
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(1);
 
   const [createOpen, setCreateOpen] = useState(false);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -40,6 +42,19 @@ export function ExpensesScreen() {
   }, [dateFrom, dateMonth, datePreset, dateTo, dateYear, items, searchTerm]);
 
   const filteredTotal = useMemo(() => filteredItems.reduce((acc, item) => acc + (item.amount ?? 0), 0), [filteredItems]);
+  const pageCount = useMemo(() => Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE)), [filteredItems.length]);
+  const paginatedItems = useMemo(() => {
+    const from = (page - 1) * PAGE_SIZE;
+    return filteredItems.slice(from, from + PAGE_SIZE);
+  }, [filteredItems, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, datePreset, dateYear, dateMonth, dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
 
   async function loadAll() {
     if (!user) return;
@@ -93,9 +108,9 @@ export function ExpensesScreen() {
         </View>
       ) : (
         <FlatList
-          data={filteredItems}
+          data={paginatedItems}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={filteredItems.length ? undefined : styles.emptyContainer}
+          contentContainerStyle={paginatedItems.length ? undefined : styles.emptyContainer}
           ListHeaderComponent={
             <View style={styles.filters}>
               <TextInput style={styles.input} value={searchTerm} onChangeText={setSearchTerm} placeholder="Пошук (опис/дата)" />
@@ -133,13 +148,32 @@ export function ExpensesScreen() {
             if (!user) return;
             setRefreshing(true);
             try {
-              setItems(await listUserSalaryPayouts(user.uid));
+              setItems(user.role === "admin" ? await listAllSalaryPayouts() : await listUserSalaryPayouts(user.uid));
             } finally {
               setRefreshing(false);
             }
           }}
           refreshing={refreshing}
           ListEmptyComponent={<Text style={styles.emptyText}>Поки що немає виплат. Натисни “Додати”.</Text>}
+          ListFooterComponent={
+            filteredItems.length ? (
+              <View style={styles.pagination}>
+                <Pressable style={[styles.secondaryButton, page === 1 ? styles.disabledButton : null]} disabled={page === 1} onPress={() => setPage((p) => Math.max(1, p - 1))}>
+                  <Text style={styles.secondaryButtonText}>Назад</Text>
+                </Pressable>
+                <Text style={styles.pageText}>
+                  Сторінка {page} / {pageCount}
+                </Text>
+                <Pressable
+                  style={[styles.secondaryButton, page === pageCount ? styles.disabledButton : null]}
+                  disabled={page === pageCount}
+                  onPress={() => setPage((p) => Math.min(pageCount, p + 1))}
+                >
+                  <Text style={styles.secondaryButtonText}>Далі</Text>
+                </Pressable>
+              </View>
+            ) : null
+          }
           renderItem={({ item }) => (
             <View style={styles.card}>
               <View style={styles.cardTop}>
@@ -253,5 +287,8 @@ const styles = StyleSheet.create({
   totalBanner: { backgroundColor: "#0b1220", borderRadius: 12, padding: 12, flexDirection: "row", justifyContent: "space-between" },
   totalLabel: { color: "#cbd5f5", fontWeight: "800" },
   totalValue: { color: "#fff", fontWeight: "900" },
+  pagination: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8, marginBottom: 6 },
+  pageText: { color: "#5b6475", fontWeight: "700" },
+  disabledButton: { opacity: 0.45 },
 });
 
