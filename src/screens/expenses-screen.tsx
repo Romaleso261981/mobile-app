@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TextIn
 import { useAuth } from "../auth/auth-context";
 import { createSalaryPayout, listUserSalaryPayouts } from "../entities/payout/payout-service";
 import type { SalaryPayout } from "../entities/payout/types";
+import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
 
 export function ExpensesScreen() {
   const { user } = useAuth();
@@ -11,11 +12,32 @@ export function ExpensesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<SalaryPayout[]>([]);
 
+  const [searchTerm, setSearchTerm] = useState("");
+  const [datePreset, setDatePreset] = useState<DateFilterPreset>("all");
+  const [dateYear, setDateYear] = useState(() => String(new Date().getFullYear()));
+  const [dateMonth, setDateMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
   const [createOpen, setCreateOpen] = useState(false);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [payoutDate, setPayoutDate] = useState(today);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
+
+  const filteredItems = useMemo(() => {
+    const s = searchTerm.trim().toLowerCase();
+    return items.filter((item) => {
+      const matchesSearch = !s ? true : item.description.toLowerCase().includes(s) || item.payoutDate.includes(s);
+      const matchesDate = matchesDateString(item.payoutDate, datePreset, dateYear, dateMonth, dateFrom, dateTo);
+      return matchesSearch && matchesDate;
+    });
+  }, [dateFrom, dateMonth, datePreset, dateTo, dateYear, items, searchTerm]);
+
+  const filteredTotal = useMemo(() => filteredItems.reduce((acc, item) => acc + (item.amount ?? 0), 0), [filteredItems]);
 
   async function loadAll() {
     if (!user) return;
@@ -60,9 +82,42 @@ export function ExpensesScreen() {
         </View>
       ) : (
         <FlatList
-          data={items}
+          data={filteredItems}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={items.length ? undefined : styles.emptyContainer}
+          contentContainerStyle={filteredItems.length ? undefined : styles.emptyContainer}
+          ListHeaderComponent={
+            <View style={styles.filters}>
+              <TextInput style={styles.input} value={searchTerm} onChangeText={setSearchTerm} placeholder="Пошук (опис/дата)" />
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() => setDatePreset((prev) => (prev === "all" ? "month" : prev === "month" ? "year" : prev === "year" ? "range" : "all"))}
+              >
+                <Text style={styles.secondaryButtonText}>
+                  {datePreset === "all" ? "Усі дати" : datePreset === "month" ? "Місяць" : datePreset === "year" ? "Рік" : "Період"}
+                </Text>
+              </Pressable>
+
+              {datePreset === "year" ? (
+                <TextInput style={styles.input} value={dateYear} onChangeText={setDateYear} placeholder="Рік (YYYY)" keyboardType="number-pad" />
+              ) : null}
+              {datePreset === "month" ? (
+                <TextInput style={styles.input} value={dateMonth} onChangeText={setDateMonth} placeholder="Місяць (YYYY-MM)" autoCapitalize="none" />
+              ) : null}
+              {datePreset === "range" ? (
+                <View style={styles.row}>
+                  <TextInput style={[styles.input, styles.rowGrow]} value={dateFrom} onChangeText={setDateFrom} placeholder="Від (YYYY-MM-DD)" autoCapitalize="none" />
+                  <TextInput style={[styles.input, styles.rowGrow]} value={dateTo} onChangeText={setDateTo} placeholder="До (YYYY-MM-DD)" autoCapitalize="none" />
+                </View>
+              ) : null}
+
+              {filteredItems.length ? (
+                <View style={styles.totalBanner}>
+                  <Text style={styles.totalLabel}>Разом (за фільтром)</Text>
+                  <Text style={styles.totalValue}>{filteredTotal.toFixed(2)} грн</Text>
+                </View>
+              ) : null}
+            </View>
+          }
           onRefresh={async () => {
             if (!user) return;
             setRefreshing(true);
@@ -163,5 +218,11 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: "#dbe1ef", borderRadius: 12, padding: 12, backgroundColor: "#fff" },
   textarea: { minHeight: 90, textAlignVertical: "top" },
   modalActions: { flexDirection: "row", gap: 12, marginTop: 10 },
+  filters: { gap: 10, marginBottom: 12 },
+  row: { flexDirection: "row", gap: 10, alignItems: "center" },
+  rowGrow: { flex: 1 },
+  totalBanner: { backgroundColor: "#0b1220", borderRadius: 12, padding: 12, flexDirection: "row", justifyContent: "space-between" },
+  totalLabel: { color: "#cbd5f5", fontWeight: "800" },
+  totalValue: { color: "#fff", fontWeight: "900" },
 });
 
