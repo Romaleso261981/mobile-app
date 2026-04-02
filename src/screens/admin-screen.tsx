@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/auth-context";
 import { addCategory, listCategories } from "../entities/category/category-service";
@@ -100,12 +100,11 @@ export function AdminScreen() {
           {adminView === "works" ? (
             <>
               <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Роботи ({works.length})</Text>
-              <FlatList
-                data={works}
-                keyExtractor={(item) => item.id}
-                style={{ marginTop: 6 }}
-                renderItem={({ item }) => (
+              <ScrollView style={{ marginTop: 6 }} contentContainerStyle={{ paddingBottom: 24 }}>
+                {works.length === 0 ? <Text style={styles.meta}>Немає робіт у Firestore.</Text> : null}
+                {works.map((item) => (
                   <Pressable
+                    key={item.id}
                     style={styles.card}
                     onPress={() => {
                       setEditWorkId(item.id);
@@ -122,18 +121,16 @@ export function AdminScreen() {
                     <Text style={styles.cardBody}>{item.description}</Text>
                     <Text style={styles.cardAmount}>{item.amount} грн</Text>
                   </Pressable>
-                )}
-              />
+                ))}
+              </ScrollView>
             </>
           ) : (
             <>
               <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Витрати ({payouts.length})</Text>
-              <FlatList
-                data={payouts}
-                keyExtractor={(item) => item.id}
-                style={{ marginTop: 6 }}
-                renderItem={({ item }) => (
-                  <View style={styles.card}>
+              <ScrollView style={{ marginTop: 6 }} contentContainerStyle={{ paddingBottom: 24 }}>
+                {payouts.length === 0 ? <Text style={styles.meta}>Немає виплат у Firestore (collection `salaryPayouts`).</Text> : null}
+                {payouts.map((item) => (
+                  <View key={item.id} style={styles.card}>
                     <View style={styles.cardTop}>
                       <Text style={styles.cardTitle}>{item.userEmail}</Text>
                       <Text style={styles.cardMeta}>{item.payoutDate}</Text>
@@ -141,8 +138,8 @@ export function AdminScreen() {
                     <Text style={styles.cardBody}>{item.description}</Text>
                     <Text style={styles.cardAmount}>{item.amount} грн</Text>
                   </View>
-                )}
-              />
+                ))}
+              </ScrollView>
             </>
           )}
         </>
