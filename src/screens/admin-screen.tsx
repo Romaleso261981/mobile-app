@@ -63,10 +63,6 @@ export function AdminScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.title}>Адмін</Text>
-          <Text style={styles.meta}>{user?.email}</Text>
-        </View>
           <View style={styles.headerButtons}>
             <Pressable style={styles.secondaryButton} onPress={() => setCategoriesOpen(true)}>
               <Text style={styles.secondaryButtonText}>Категорії</Text>
@@ -226,8 +222,7 @@ export function AdminScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f6f8ff" },
   container: { flex: 1, padding: 16, gap: 12, backgroundColor: "#f6f8ff" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  headerLeft: { flex: 1 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 12 },
   headerButtons: { flexDirection: "row", gap: 10, alignItems: "center" },
   title: { fontSize: 22, fontWeight: "800", color: "#0b1220" },
   meta: { color: "#5b6475", marginTop: 2 },

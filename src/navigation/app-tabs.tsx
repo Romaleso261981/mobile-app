@@ -19,7 +19,7 @@ export function AppTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerTitleAlign: "center",
+        headerShown: false,
         tabBarActiveTintColor: "#3158f5",
         tabBarInactiveTintColor: "#7b8599",
         tabBarIcon: ({ color, size, focused }) => {
