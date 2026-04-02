@@ -69,6 +69,14 @@ export function AdminScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.container}>
         <View style={styles.header}>
+          <View style={styles.metaRow}>
+            <Text style={styles.meta} numberOfLines={1}>{user?.email}</Text>
+            <Pressable style={styles.logoutChip} onPress={() => logout()}>
+              <Ionicons name="log-out-outline" size={14} color="#3158f5" />
+              <Text style={styles.logoutChipText}>Вийти</Text>
+            </Pressable>
+          </View>
+
           <View style={styles.segmentRow}>
             <Pressable style={[styles.segmentButton, adminView === "works" ? styles.segmentButtonActive : null]} onPress={() => setAdminView("works")}>
               <Text style={[styles.segmentText, adminView === "works" ? styles.segmentTextActive : null]}>Роботи</Text>
@@ -86,13 +94,6 @@ export function AdminScreen() {
               <Text style={styles.primaryButtonText}>+ Додати</Text>
             </Pressable>
           </View>
-        </View>
-        <View style={styles.metaRow}>
-          <Text style={styles.meta}>{user?.email}</Text>
-          <Pressable style={styles.logoutChip} onPress={() => logout()}>
-            <Ionicons name="log-out-outline" size={14} color="#3158f5" />
-            <Text style={styles.logoutChipText}>Вийти</Text>
-          </Pressable>
         </View>
 
       {loading ? (
