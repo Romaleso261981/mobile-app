@@ -67,22 +67,25 @@ export function AdminScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.container}>
-      <View style={styles.header}>
-          <View style={styles.headerButtons}>
-            <Pressable style={[styles.secondaryButton, adminView === "works" ? styles.tabActive : null]} onPress={() => setAdminView("works")}>
-              <Text style={styles.secondaryButtonText}>Роботи</Text>
+        <View style={styles.header}>
+          <View style={styles.segmentRow}>
+            <Pressable style={[styles.segmentButton, adminView === "works" ? styles.segmentButtonActive : null]} onPress={() => setAdminView("works")}>
+              <Text style={[styles.segmentText, adminView === "works" ? styles.segmentTextActive : null]}>Роботи</Text>
             </Pressable>
-            <Pressable style={[styles.secondaryButton, adminView === "expenses" ? styles.tabActive : null]} onPress={() => setAdminView("expenses")}>
-              <Text style={styles.secondaryButtonText}>Витрати</Text>
+            <Pressable style={[styles.segmentButton, adminView === "expenses" ? styles.segmentButtonActive : null]} onPress={() => setAdminView("expenses")}>
+              <Text style={[styles.segmentText, adminView === "expenses" ? styles.segmentTextActive : null]}>Витрати</Text>
             </Pressable>
-            <Pressable style={styles.secondaryButton} onPress={() => setCategoriesOpen(true)}>
+          </View>
+
+          <View style={styles.actionsRow}>
+            <Pressable style={[styles.secondaryButton, styles.actionButton]} onPress={() => setCategoriesOpen(true)}>
               <Text style={styles.secondaryButtonText}>Категорії</Text>
             </Pressable>
-            <Pressable style={styles.primaryButton} onPress={() => setCreateCategoryOpen(true)}>
+            <Pressable style={[styles.primaryButton, styles.actionButton]} onPress={() => setCreateCategoryOpen(true)}>
               <Text style={styles.primaryButtonText}>+ Додати</Text>
             </Pressable>
           </View>
-      </View>
+        </View>
 
       {loading ? (
         <View style={styles.center}>
@@ -253,9 +256,32 @@ export function AdminScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f6f8ff" },
   container: { flex: 1, padding: 16, gap: 12, backgroundColor: "#f6f8ff" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 12 },
-  headerButtons: { flexDirection: "row", gap: 10, alignItems: "center" },
-  tabActive: { borderColor: "#3158f5", backgroundColor: "#eef2ff" },
+  header: { gap: 10 },
+  segmentRow: {
+    flexDirection: "row",
+    backgroundColor: "#e9eefc",
+    borderRadius: 12,
+    padding: 4,
+    gap: 6,
+  },
+  segmentButton: {
+    flex: 1,
+    borderRadius: 9,
+    paddingVertical: 9,
+    alignItems: "center",
+  },
+  segmentButtonActive: {
+    backgroundColor: "#ffffff",
+  },
+  segmentText: {
+    color: "#5f6a82",
+    fontWeight: "800",
+  },
+  segmentTextActive: {
+    color: "#3158f5",
+  },
+  actionsRow: { flexDirection: "row", gap: 10 },
+  actionButton: { flex: 1 },
   title: { fontSize: 22, fontWeight: "800", color: "#0b1220" },
   meta: { color: "#5b6475", marginTop: 2 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
