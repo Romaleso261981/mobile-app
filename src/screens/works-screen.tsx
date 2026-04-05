@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { createElement, useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/auth-context";
 import { listCategories } from "../entities/category/category-service";
@@ -15,6 +16,35 @@ import {
 import type { WorkEntry } from "../entities/work/types";
 import { firestoreActionError } from "../shared/firestore-errors";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
+
+/** Локальна дата YYYY-MM-DD без зсуву через UTC. */
+function formatLocalYMD(d: Date): string {
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** Лише для фільтра «Період»: нативний календар обирає день. Рік/місяць — окремі списки. */
+type RangeDateTarget = "from" | "to";
+
+const YEAR_PICKER_BACK = 25;
+const YEAR_PICKER_FORWARD = 5;
+
+const UK_MONTHS = [
+  { m: 1, label: "Січень" },
+  { m: 2, label: "Лютий" },
+  { m: 3, label: "Березень" },
+  { m: 4, label: "Квітень" },
+  { m: 5, label: "Травень" },
+  { m: 6, label: "Червень" },
+  { m: 7, label: "Липень" },
+  { m: 8, label: "Серпень" },
+  { m: 9, label: "Вересень" },
+  { m: 10, label: "Жовтень" },
+  { m: 11, label: "Листопад" },
+  { m: 12, label: "Грудень" },
+] as const;
 
 export function WorksScreen() {
   const { user, logout } = useAuth();
@@ -34,6 +64,12 @@ export function WorksScreen() {
   });
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  /** Нативний календар лише для «Період» (від / до). */
+  const [calendarTarget, setCalendarTarget] = useState<RangeDateTarget | null>(null);
+  const [calendarDate, setCalendarDate] = useState(() => new Date());
+  const [yearPickerOpen, setYearPickerOpen] = useState(false);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const [monthPickerYear, setMonthPickerYear] = useState(() => new Date().getFullYear());
   const [page, setPage] = useState(1);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -75,6 +111,13 @@ export function WorksScreen() {
     () => [{ userId: "", email: "Усі працівники" }, ...employeeFilterOptions],
     [employeeFilterOptions],
   );
+
+  const yearPickerYears = useMemo(() => {
+    const cy = new Date().getFullYear();
+    const list: number[] = [];
+    for (let y = cy + YEAR_PICKER_FORWARD; y >= cy - YEAR_PICKER_BACK; y--) list.push(y);
+    return list;
+  }, []);
 
   const filteredItems = useMemo(() => {
     const s = searchTerm.trim().toLowerCase();
@@ -131,6 +174,64 @@ export function WorksScreen() {
   useEffect(() => {
     if (user?.role !== "admin") setFilterEmployeeId("");
   }, [user?.role]);
+
+  const applyRangePickedDate = useCallback((date: Date, target: RangeDateTarget) => {
+    if (target === "from") setDateFrom(formatLocalYMD(date));
+    else setDateTo(formatLocalYMD(date));
+  }, []);
+
+  function openYearPicker() {
+    setYearPickerOpen(true);
+  }
+
+  function openMonthPicker() {
+    const m = dateMonth.trim();
+    if (/^\d{4}-\d{2}$/.test(m)) {
+      setMonthPickerYear(Number(m.split("-")[0]));
+    } else {
+      setMonthPickerYear(new Date().getFullYear());
+    }
+    setMonthPickerOpen(true);
+  }
+
+  function openRangeDatePicker(target: RangeDateTarget) {
+    if (target === "from") {
+      const f = dateFrom.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(f)) {
+        const [yy, mm, dd] = f.split("-").map(Number);
+        setCalendarDate(new Date(yy, mm - 1, dd));
+      } else {
+        setCalendarDate(new Date());
+      }
+    } else {
+      const t = dateTo.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(t)) {
+        const [yy, mm, dd] = t.split("-").map(Number);
+        setCalendarDate(new Date(yy, mm - 1, dd));
+      } else {
+        setCalendarDate(new Date());
+      }
+    }
+    setCalendarTarget(target);
+  }
+
+  function commitRangeCalendar() {
+    if (calendarTarget) applyRangePickedDate(calendarDate, calendarTarget);
+    setCalendarTarget(null);
+  }
+
+  const onAndroidCalendarChange = useCallback(
+    (event: DateTimePickerEvent, date?: Date) => {
+      const target = calendarTarget;
+      if (event.type === "dismissed") {
+        setCalendarTarget(null);
+        return;
+      }
+      if (date && target) applyRangePickedDate(date, target);
+      setCalendarTarget(null);
+    },
+    [applyRangePickedDate, calendarTarget],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -218,15 +319,59 @@ export function WorksScreen() {
               ) : null}
 
               {datePreset === "year" ? (
-                <TextInput style={styles.input} value={dateYear} onChangeText={setDateYear} placeholder="Рік (YYYY)" keyboardType="number-pad" />
+                <View style={styles.inputWithIconRow}>
+                  <TextInput
+                    style={[styles.input, styles.inputInRow]}
+                    value={dateYear}
+                    onChangeText={setDateYear}
+                    placeholder="Рік (YYYY)"
+                    keyboardType="number-pad"
+                  />
+                  <Pressable style={styles.calendarIconButton} onPress={openYearPicker} accessibilityLabel="Обрати рік зі списку">
+                    <Ionicons name="list-outline" size={22} color="#3158f5" />
+                  </Pressable>
+                </View>
               ) : null}
               {datePreset === "month" ? (
-                <TextInput style={styles.input} value={dateMonth} onChangeText={setDateMonth} placeholder="Місяць (YYYY-MM)" autoCapitalize="none" />
+                <View style={styles.inputWithIconRow}>
+                  <TextInput
+                    style={[styles.input, styles.inputInRow]}
+                    value={dateMonth}
+                    onChangeText={setDateMonth}
+                    placeholder="Місяць (YYYY-MM)"
+                    autoCapitalize="none"
+                  />
+                  <Pressable style={styles.calendarIconButton} onPress={openMonthPicker} accessibilityLabel="Обрати місяць зі списку">
+                    <Ionicons name="grid-outline" size={22} color="#3158f5" />
+                  </Pressable>
+                </View>
               ) : null}
               {datePreset === "range" ? (
                 <View style={styles.row}>
-                  <TextInput style={[styles.input, styles.rowGrow]} value={dateFrom} onChangeText={setDateFrom} placeholder="Від (YYYY-MM-DD)" autoCapitalize="none" />
-                  <TextInput style={[styles.input, styles.rowGrow]} value={dateTo} onChangeText={setDateTo} placeholder="До (YYYY-MM-DD)" autoCapitalize="none" />
+                  <View style={[styles.inputWithIconRow, styles.rowGrow]}>
+                    <TextInput
+                      style={[styles.input, styles.inputInRow]}
+                      value={dateFrom}
+                      onChangeText={setDateFrom}
+                      placeholder="Від (YYYY-MM-DD)"
+                      autoCapitalize="none"
+                    />
+                    <Pressable style={styles.calendarIconButton} onPress={() => openRangeDatePicker("from")} accessibilityLabel="Обрати дату «від» у календарі">
+                      <Ionicons name="calendar-outline" size={22} color="#3158f5" />
+                    </Pressable>
+                  </View>
+                  <View style={[styles.inputWithIconRow, styles.rowGrow]}>
+                    <TextInput
+                      style={[styles.input, styles.inputInRow]}
+                      value={dateTo}
+                      onChangeText={setDateTo}
+                      placeholder="До (YYYY-MM-DD)"
+                      autoCapitalize="none"
+                    />
+                    <Pressable style={styles.calendarIconButton} onPress={() => openRangeDatePicker("to")} accessibilityLabel="Обрати дату «до» у календарі">
+                      <Ionicons name="calendar-outline" size={22} color="#3158f5" />
+                    </Pressable>
+                  </View>
                 </View>
               ) : null}
 
@@ -539,6 +684,137 @@ export function WorksScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <Modal visible={yearPickerOpen} transparent animationType="fade" onRequestClose={() => setYearPickerOpen(false)}>
+        <Pressable style={styles.overlay} onPress={() => setYearPickerOpen(false)}>
+          <View style={styles.sheet}>
+            <Text style={styles.sheetTitle}>Оберіть рік</Text>
+            <FlatList
+              data={yearPickerYears}
+              keyExtractor={(y) => String(y)}
+              renderItem={({ item: y }) => (
+                <Pressable
+                  style={[styles.sheetRow, String(y) === dateYear.trim() ? styles.sheetRowActive : null]}
+                  onPress={() => {
+                    setDateYear(String(y));
+                    setYearPickerOpen(false);
+                  }}
+                >
+                  <Text style={styles.sheetRowText}>{y}</Text>
+                </Pressable>
+              )}
+            />
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={monthPickerOpen} transparent animationType="fade" onRequestClose={() => setMonthPickerOpen(false)}>
+        <Pressable style={styles.overlay} onPress={() => setMonthPickerOpen(false)}>
+          <View style={[styles.sheet, styles.monthPickerSheet]}>
+            <Text style={styles.sheetTitle}>Оберіть місяць</Text>
+            <View style={styles.monthPickerYearRow}>
+              <Pressable style={styles.monthPickerYearChevron} onPress={() => setMonthPickerYear((p) => p - 1)} hitSlop={8}>
+                <Ionicons name="chevron-back" size={24} color="#3158f5" />
+              </Pressable>
+              <Text style={styles.monthPickerYearText}>{monthPickerYear}</Text>
+              <Pressable style={styles.monthPickerYearChevron} onPress={() => setMonthPickerYear((p) => p + 1)} hitSlop={8}>
+                <Ionicons name="chevron-forward" size={24} color="#3158f5" />
+              </Pressable>
+            </View>
+            <View style={styles.monthGrid}>
+              {UK_MONTHS.map((item) => {
+                const value = `${monthPickerYear}-${String(item.m).padStart(2, "0")}`;
+                const active = dateMonth.trim() === value;
+                return (
+                  <Pressable
+                    key={item.m}
+                    style={[styles.monthCell, active ? styles.monthCellActive : null]}
+                    onPress={() => {
+                      setDateMonth(value);
+                      setMonthPickerOpen(false);
+                    }}
+                  >
+                    <Text style={[styles.monthCellText, active ? styles.monthCellTextActive : null]} numberOfLines={2}>
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {Platform.OS === "ios" && calendarTarget !== null ? (
+        <Modal transparent animationType="slide" visible onRequestClose={() => setCalendarTarget(null)}>
+          <Pressable style={styles.calendarModalOverlay} onPress={() => setCalendarTarget(null)}>
+            <Pressable style={styles.calendarSheet} onPress={(e) => e.stopPropagation()}>
+              <DateTimePicker
+                value={calendarDate}
+                mode="date"
+                display="inline"
+                locale="uk-UA"
+                onChange={(_, d) => {
+                  if (d) setCalendarDate(d);
+                }}
+              />
+              <View style={styles.calendarActions}>
+                <Pressable onPress={() => setCalendarTarget(null)} hitSlop={8}>
+                  <Text style={styles.calendarCancelText}>Скасувати</Text>
+                </Pressable>
+                <Pressable onPress={commitRangeCalendar} hitSlop={8}>
+                  <Text style={styles.calendarDoneText}>Готово</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
+      {Platform.OS === "android" && calendarTarget !== null ? (
+        <DateTimePicker
+          value={calendarDate}
+          mode="date"
+          display="default"
+          locale="uk-UA"
+          onChange={onAndroidCalendarChange}
+        />
+      ) : null}
+      {Platform.OS === "web" && calendarTarget !== null ? (
+        <Modal transparent animationType="fade" visible onRequestClose={() => setCalendarTarget(null)}>
+          <Pressable style={styles.calendarModalOverlay} onPress={() => setCalendarTarget(null)}>
+            <Pressable style={styles.calendarSheet} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.webDateInputWrap}>
+                {createElement("input", {
+                  type: "date",
+                  value: formatLocalYMD(calendarDate),
+                  onChange: (e: { target: { value: string } }) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    const d = new Date(`${v}T12:00:00`);
+                    if (!Number.isNaN(d.getTime())) setCalendarDate(d);
+                  },
+                  style: {
+                    width: "100%",
+                    fontSize: 18,
+                    padding: 14,
+                    borderRadius: 12,
+                    border: "1px solid #dbe1ef",
+                    boxSizing: "border-box" as const,
+                  },
+                } as Record<string, unknown>)}
+              </View>
+              <View style={styles.calendarActions}>
+                <Pressable onPress={() => setCalendarTarget(null)} hitSlop={8}>
+                  <Text style={styles.calendarCancelText}>Скасувати</Text>
+                </Pressable>
+                <Pressable onPress={commitRangeCalendar} hitSlop={8}>
+                  <Text style={styles.calendarDoneText}>Готово</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
       </View>
     </SafeAreaView>
   );
@@ -607,13 +883,70 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: "800", marginBottom: 6 },
   label: { color: "#5b6475", fontWeight: "700" },
   input: { borderWidth: 1, borderColor: "#dbe1ef", borderRadius: 12, padding: 12, backgroundColor: "#fff" },
+  inputWithIconRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  inputInRow: { flex: 1, minWidth: 0 },
+  calendarIconButton: {
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: "#f8faff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  calendarModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  calendarSheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingTop: 8,
+    overflow: "hidden",
+  },
+  calendarActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#e7ecfb",
+  },
+  calendarCancelText: { color: "#5b6475", fontWeight: "700", fontSize: 16 },
+  calendarDoneText: { color: "#3158f5", fontWeight: "800", fontSize: 16 },
+  webDateInputWrap: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
   textarea: { minHeight: 90, textAlignVertical: "top" },
   picker: { borderWidth: 1, borderColor: "#dbe1ef", borderRadius: 12, padding: 12, backgroundColor: "#f8faff" },
   pickerText: { color: "#0b1220", fontWeight: "700" },
   modalActions: { flexDirection: "row", gap: 12, marginTop: 10 },
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
   sheet: { backgroundColor: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 14, maxHeight: "70%" },
+  monthPickerSheet: { maxHeight: "85%" },
   sheetTitle: { fontWeight: "800", fontSize: 16, marginBottom: 10 },
+  monthPickerYearRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    marginBottom: 14,
+    paddingVertical: 4,
+  },
+  monthPickerYearChevron: { padding: 4 },
+  monthPickerYearText: { fontSize: 22, fontWeight: "800", color: "#0b1220", minWidth: 72, textAlign: "center" },
+  monthGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "space-between", paddingBottom: 8 },
+  monthCell: {
+    width: "31%",
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+    backgroundColor: "#fff",
+    alignItems: "center",
+  },
+  monthCellActive: { borderColor: "#3158f5", backgroundColor: "#eef2ff" },
+  monthCellText: { fontWeight: "700", fontSize: 13, color: "#0b1220", textAlign: "center" },
+  monthCellTextActive: { color: "#3158f5" },
   sheetRow: { paddingVertical: 12, paddingHorizontal: 10, borderRadius: 10 },
   sheetRowActive: { backgroundColor: "#eef2ff" },
   sheetRowText: { fontWeight: "700", color: "#0b1220" },
