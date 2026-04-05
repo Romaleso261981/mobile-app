@@ -30,13 +30,26 @@ export async function listAllWorkEntries(): Promise<WorkEntry[]> {
   return snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as Omit<WorkEntry, "id">) }));
 }
 
-export async function updateWorkEntryAdmin(workId: string, patch: { amount: number; description: string }): Promise<void> {
+export async function updateWorkEntryAdmin(
+  workId: string,
+  patch: {
+    amount: number;
+    description: string;
+    workDate?: string;
+    categoryId?: string;
+    categoryName?: string;
+  },
+): Promise<void> {
   const db = getFirebaseDb();
-  await updateDoc(doc(db, "workEntries", workId), {
+  const updates: Record<string, unknown> = {
     amount: patch.amount,
     description: patch.description,
     updatedAt: serverTimestamp(),
-  });
+  };
+  if (patch.workDate !== undefined) updates.workDate = patch.workDate;
+  if (patch.categoryId !== undefined) updates.categoryId = patch.categoryId;
+  if (patch.categoryName !== undefined) updates.categoryName = patch.categoryName;
+  await updateDoc(doc(db, "workEntries", workId), updates);
 }
 
 export async function deleteWorkEntryAdmin(workId: string): Promise<void> {

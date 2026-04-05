@@ -5,15 +5,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/auth-context";
 import { addCategory, listCategories } from "../entities/category/category-service";
 import type { Category } from "../entities/category/types";
-import { listAllSalaryPayouts } from "../entities/payout/payout-service";
+import { deleteSalaryPayoutAdmin, listAllSalaryPayouts } from "../entities/payout/payout-service";
 import type { SalaryPayout } from "../entities/payout/types";
 import { deleteWorkEntryAdmin, listAllWorkEntries, updateWorkEntryAdmin } from "../entities/work/work-service";
 import type { WorkEntry } from "../entities/work/types";
 
-function deleteWorkErrorMessage(e: unknown): string {
+function firestoreDeleteErrorMessage(e: unknown): string {
   const code = e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : "";
   if (code === "permission-denied") {
-    return "Немає прав на видалення. Опублікуйте правила з файлу firestore.rules у Firebase Console → Firestore → Rules.";
+    return "Немає прав на видалення. Перевірте Firestore Rules (delete для admin).";
   }
   return "Не вдалося видалити запис.";
 }
@@ -189,7 +189,7 @@ export function AdminScreen() {
                                     }
                                     await loadAll();
                                   } catch (e) {
-                                    setError(deleteWorkErrorMessage(e));
+                                    setError(firestoreDeleteErrorMessage(e));
                                   } finally {
                                     setLoading(false);
                                   }
@@ -236,6 +236,36 @@ export function AdminScreen() {
                     </View>
                     <Text style={styles.cardBody}>{item.description}</Text>
                     <Text style={styles.cardAmount}>{item.amount} грн</Text>
+                    <View style={styles.cardActions}>
+                      <Pressable
+                        style={styles.deleteButton}
+                        onPress={() => {
+                          Alert.alert("Видалити виплату?", `${item.userEmail} • ${item.payoutDate} • ${item.amount} грн. Цю дію не скасувати.`, [
+                            { text: "Ні", style: "cancel" },
+                            {
+                              text: "Видалити",
+                              style: "destructive",
+                              onPress: () => {
+                                void (async () => {
+                                  setLoading(true);
+                                  setError(null);
+                                  try {
+                                    await deleteSalaryPayoutAdmin(item.id);
+                                    await loadAll();
+                                  } catch (e) {
+                                    setError(firestoreDeleteErrorMessage(e));
+                                  } finally {
+                                    setLoading(false);
+                                  }
+                                })();
+                              },
+                            },
+                          ]);
+                        }}
+                      >
+                        <Text style={styles.deleteButtonText}>Видалити</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 ))}
                 {payouts.length ? (
@@ -378,7 +408,7 @@ export function AdminScreen() {
                         setEditWorkId(null);
                         await loadAll();
                       } catch (e) {
-                        setError(deleteWorkErrorMessage(e));
+                        setError(firestoreDeleteErrorMessage(e));
                       } finally {
                         setLoading(false);
                       }

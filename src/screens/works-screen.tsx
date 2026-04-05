@@ -1,12 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/auth-context";
 import { listCategories } from "../entities/category/category-service";
 import type { Category } from "../entities/category/types";
-import { createWorkEntry, listAllWorkEntries, listUserWorkEntries } from "../entities/work/work-service";
+import {
+  createWorkEntry,
+  deleteWorkEntryAdmin,
+  listAllWorkEntries,
+  listUserWorkEntries,
+  updateWorkEntryAdmin,
+} from "../entities/work/work-service";
 import type { WorkEntry } from "../entities/work/types";
+import { firestoreActionError } from "../shared/firestore-errors";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
 
 export function WorksScreen() {
@@ -37,10 +44,18 @@ export function WorksScreen() {
   const [filterCategoryId, setFilterCategoryId] = useState<string>("");
   const [formCategoryId, setFormCategoryId] = useState<string>("");
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
-  /** Одна модалка списку: або фільтр списку, або категорія в формі «Нова робота». */
-  const [categoryPickerFor, setCategoryPickerFor] = useState<"filter" | "form">("filter");
+  /** Фільтр / нова робота / редагування — одна модалка списку категорій. */
+  const [categoryPickerFor, setCategoryPickerFor] = useState<"filter" | "form" | "edit">("filter");
+
+  const [editWorkOpen, setEditWorkOpen] = useState(false);
+  const [editWorkId, setEditWorkId] = useState<string | null>(null);
+  const [editWorkDate, setEditWorkDate] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editAmount, setEditAmount] = useState("");
+  const [editCategoryId, setEditCategoryId] = useState("");
 
   const selectedCategory = useMemo(() => categories.find((c) => c.id === formCategoryId) ?? null, [categories, formCategoryId]);
+  const selectedEditCategory = useMemo(() => categories.find((c) => c.id === editCategoryId) ?? null, [categories, editCategoryId]);
 
   const filteredItems = useMemo(() => {
     const s = searchTerm.trim().toLowerCase();
@@ -209,16 +224,69 @@ export function WorksScreen() {
               </View>
             ) : null
           }
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <View style={styles.cardTop}>
-                <Text style={styles.cardTitle}>{item.categoryName}</Text>
-                <Text style={styles.cardMeta}>{item.workDate}</Text>
+          renderItem={({ item }) => {
+            const canModify = user && (item.userId === user.uid || user.role === "admin");
+            return (
+              <View style={styles.card}>
+                <View style={styles.cardTop}>
+                  <Text style={styles.cardTitle}>{item.categoryName}</Text>
+                  <Text style={styles.cardMeta}>{item.workDate}</Text>
+                </View>
+                {user?.role === "admin" ? <Text style={styles.cardUserEmail}>{item.userEmail}</Text> : null}
+                <Text style={styles.cardBody}>{item.description}</Text>
+                <Text style={styles.cardAmount}>{item.amount} грн</Text>
+                {canModify ? (
+                  <View style={styles.cardActions}>
+                    <Pressable
+                      style={styles.editOutlineButton}
+                      onPress={() => {
+                        setEditWorkId(item.id);
+                        setEditWorkDate(item.workDate);
+                        setEditDescription(item.description);
+                        setEditAmount(String(item.amount ?? 0));
+                        setEditCategoryId(item.categoryId);
+                        setEditWorkOpen(true);
+                      }}
+                    >
+                      <Text style={styles.editOutlineButtonText}>Редагувати</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.deleteOutlineButton}
+                      onPress={() => {
+                        Alert.alert("Видалити запис?", "Цю дію не скасувати.", [
+                          { text: "Ні", style: "cancel" },
+                          {
+                            text: "Видалити",
+                            style: "destructive",
+                            onPress: () => {
+                              void (async () => {
+                                setLoading(true);
+                                setError(null);
+                                try {
+                                  await deleteWorkEntryAdmin(item.id);
+                                  if (editWorkId === item.id) {
+                                    setEditWorkOpen(false);
+                                    setEditWorkId(null);
+                                  }
+                                  setItems(user.role === "admin" ? await listAllWorkEntries() : await listUserWorkEntries(user.uid));
+                                } catch (e) {
+                                  setError(firestoreActionError(e, "Не вдалося видалити запис."));
+                                } finally {
+                                  setLoading(false);
+                                }
+                              })();
+                            },
+                          },
+                        ]);
+                      }}
+                    >
+                      <Text style={styles.deleteOutlineButtonText}>Видалити</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
               </View>
-              <Text style={styles.cardBody}>{item.description}</Text>
-              <Text style={styles.cardAmount}>{item.amount} грн</Text>
-            </View>
-          )}
+            );
+          }}
         />
       )}
 
@@ -288,11 +356,85 @@ export function WorksScreen() {
         </View>
       </Modal>
 
+      <Modal visible={editWorkOpen} animationType="slide" onRequestClose={() => setEditWorkOpen(false)}>
+        <ScrollView style={styles.editScroll} contentContainerStyle={styles.editScrollContent} keyboardShouldPersistTaps="handled">
+          <Text style={styles.modalTitle}>Редагувати роботу</Text>
+
+          <Text style={styles.label}>Дата (YYYY-MM-DD)</Text>
+          <TextInput style={styles.input} value={editWorkDate} onChangeText={setEditWorkDate} placeholder="2026-04-02" autoCapitalize="none" />
+
+          <Text style={styles.label}>Категорія</Text>
+          <Pressable
+            style={styles.picker}
+            onPress={() => {
+              setCategoryPickerFor("edit");
+              setCategoryPickerOpen(true);
+            }}
+          >
+            <Text style={styles.pickerText}>{selectedEditCategory?.name ?? "Оберіть категорію"}</Text>
+          </Pressable>
+
+          <Text style={styles.label}>Опис</Text>
+          <TextInput style={[styles.input, styles.textarea]} value={editDescription} onChangeText={setEditDescription} multiline />
+
+          <Text style={styles.label}>Сума (грн)</Text>
+          <TextInput style={styles.input} value={editAmount} onChangeText={setEditAmount} keyboardType="numeric" />
+
+          <View style={styles.modalActions}>
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => {
+                setEditWorkOpen(false);
+                setEditWorkId(null);
+              }}
+            >
+              <Text style={styles.secondaryButtonText}>Скасувати</Text>
+            </Pressable>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={async () => {
+                if (!user || !editWorkId) return;
+                const category = categories.find((c) => c.id === editCategoryId);
+                if (!category) {
+                  setError("Оберіть категорію.");
+                  return;
+                }
+                setLoading(true);
+                try {
+                  const parsed = Number(editAmount.replace(",", "."));
+                  if (!Number.isFinite(parsed)) throw new Error("invalid amount");
+                  await updateWorkEntryAdmin(editWorkId, {
+                    workDate: editWorkDate.trim(),
+                    description: editDescription.trim(),
+                    amount: parsed,
+                    categoryId: category.id,
+                    categoryName: category.name,
+                  });
+                  setEditWorkOpen(false);
+                  setEditWorkId(null);
+                  setItems(user.role === "admin" ? await listAllWorkEntries() : await listUserWorkEntries(user.uid));
+                } catch (e) {
+                  setError(firestoreActionError(e, "Не вдалося зберегти зміни."));
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            >
+              <Text style={styles.primaryButtonText}>Зберегти</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </Modal>
+
       <Modal visible={categoryPickerOpen} transparent animationType="fade" onRequestClose={() => setCategoryPickerOpen(false)}>
         <Pressable style={styles.overlay} onPress={() => setCategoryPickerOpen(false)}>
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>
-              {categoryPickerFor === "filter" ? "Фільтр: категорія" : "Категорія для запису"}
+              {categoryPickerFor === "filter"
+                ? "Фільтр: категорія"
+                : categoryPickerFor === "form"
+                  ? "Категорія для запису"
+                  : "Категорія"}
             </Text>
             <FlatList
               data={
@@ -303,15 +445,21 @@ export function WorksScreen() {
               keyExtractor={(item, index) => item.id || `all-${index}`}
               renderItem={({ item }) => {
                 const rowActive =
-                  categoryPickerFor === "filter" ? item.id === filterCategoryId : item.id === formCategoryId;
+                  categoryPickerFor === "filter"
+                    ? item.id === filterCategoryId
+                    : categoryPickerFor === "form"
+                      ? item.id === formCategoryId
+                      : item.id === editCategoryId;
                 return (
                   <Pressable
                     style={[styles.sheetRow, rowActive ? styles.sheetRowActive : null]}
                     onPress={() => {
                       if (categoryPickerFor === "filter") {
                         setFilterCategoryId(item.id);
-                      } else {
+                      } else if (categoryPickerFor === "form") {
                         setFormCategoryId(item.id);
+                      } else {
+                        setEditCategoryId(item.id);
                       }
                       setCategoryPickerOpen(false);
                     }}
@@ -359,7 +507,31 @@ const styles = StyleSheet.create({
   cardTitle: { fontWeight: "800", color: "#0b1220" },
   cardMeta: { color: "#5b6475", fontSize: 12 },
   cardBody: { marginTop: 6, color: "#1a2740" },
+  cardUserEmail: { marginTop: 4, color: "#5b6475", fontSize: 12 },
   cardAmount: { marginTop: 10, fontWeight: "800", color: "#0b1220" },
+  cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  editOutlineButton: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff",
+  },
+  editOutlineButtonText: { color: "#3158f5", fontWeight: "800" },
+  deleteOutlineButton: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#f5c2c2",
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff5f5",
+  },
+  deleteOutlineButtonText: { color: "#b42318", fontWeight: "800" },
+  editScroll: { flex: 1, backgroundColor: "#fff" },
+  editScrollContent: { padding: 16, gap: 10, paddingBottom: 32 },
   primaryButton: { backgroundColor: "#3158f5", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center" },
   primaryButtonText: { color: "#fff", fontWeight: "800" },
   secondaryButton: { backgroundColor: "#ffffff", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center", borderWidth: 1, borderColor: "#dbe1ef" },

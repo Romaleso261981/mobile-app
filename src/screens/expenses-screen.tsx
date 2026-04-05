@@ -1,10 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/auth-context";
-import { createSalaryPayout, listAllSalaryPayouts, listUserSalaryPayouts } from "../entities/payout/payout-service";
+import {
+  createSalaryPayout,
+  deleteSalaryPayoutAdmin,
+  listAllSalaryPayouts,
+  listUserSalaryPayouts,
+  updateSalaryPayout,
+} from "../entities/payout/payout-service";
 import type { SalaryPayout } from "../entities/payout/types";
+import { firestoreActionError } from "../shared/firestore-errors";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
 
 export function ExpensesScreen() {
@@ -26,11 +33,33 @@ export function ExpensesScreen() {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
 
-  const [createOpen, setCreateOpen] = useState(false);
+  const [payoutModal, setPayoutModal] = useState<"none" | "create" | "edit">("none");
+  const [editingPayoutId, setEditingPayoutId] = useState<string | null>(null);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [payoutDate, setPayoutDate] = useState(today);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
+
+  function openCreatePayout() {
+    setEditingPayoutId(null);
+    setPayoutDate(today);
+    setDescription("");
+    setAmount("");
+    setPayoutModal("create");
+  }
+
+  function openEditPayout(item: SalaryPayout) {
+    setEditingPayoutId(item.id);
+    setPayoutDate(item.payoutDate);
+    setDescription(item.description);
+    setAmount(String(item.amount ?? 0));
+    setPayoutModal("edit");
+  }
+
+  function closePayoutModal() {
+    setPayoutModal("none");
+    setEditingPayoutId(null);
+  }
 
   const filteredItems = useMemo(() => {
     const s = searchTerm.trim().toLowerCase();
@@ -82,7 +111,7 @@ export function ExpensesScreen() {
           <View style={styles.headerLeft}>
             <Text style={styles.title}>Витрати</Text>
           </View>
-          <Pressable style={styles.primaryButton} onPress={() => setCreateOpen(true)}>
+          <Pressable style={styles.primaryButton} onPress={openCreatePayout}>
             <Text style={styles.primaryButtonText}>+ Додати</Text>
           </Pressable>
         </View>
@@ -174,22 +203,61 @@ export function ExpensesScreen() {
               </View>
             ) : null
           }
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <View style={styles.cardTop}>
-                <Text style={styles.cardTitle}>{item.payoutDate}</Text>
-                <Text style={styles.cardAmount}>{item.amount} грн</Text>
+          renderItem={({ item }) => {
+            const canModify = user && (item.userId === user.uid || user.role === "admin");
+            return (
+              <View style={styles.card}>
+                <View style={styles.cardTop}>
+                  <Text style={styles.cardTitle}>{item.payoutDate}</Text>
+                  <Text style={styles.cardAmount}>{item.amount} грн</Text>
+                </View>
+                {user?.role === "admin" ? <Text style={styles.cardMeta}>{item.userEmail}</Text> : null}
+                <Text style={styles.cardBody}>{item.description}</Text>
+                {canModify ? (
+                  <View style={styles.cardActions}>
+                    <Pressable style={styles.editButton} onPress={() => openEditPayout(item)}>
+                      <Text style={styles.editButtonText}>Редагувати</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.deleteButton}
+                      onPress={() => {
+                        Alert.alert("Видалити виплату?", "Цю дію не скасувати.", [
+                          { text: "Ні", style: "cancel" },
+                          {
+                            text: "Видалити",
+                            style: "destructive",
+                            onPress: () => {
+                              void (async () => {
+                                setLoading(true);
+                                setError(null);
+                                try {
+                                  await deleteSalaryPayoutAdmin(item.id);
+                                  if (editingPayoutId === item.id) closePayoutModal();
+                                  await loadAll();
+                                } catch (e) {
+                                  setError(firestoreActionError(e, "Не вдалося видалити виплату."));
+                                } finally {
+                                  setLoading(false);
+                                }
+                              })();
+                            },
+                          },
+                        ]);
+                      }}
+                    >
+                      <Text style={styles.deleteButtonText}>Видалити</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
               </View>
-              {user?.role === "admin" ? <Text style={styles.cardMeta}>{item.userEmail}</Text> : null}
-              <Text style={styles.cardBody}>{item.description}</Text>
-            </View>
-          )}
+            );
+          }}
         />
       )}
 
-      <Modal visible={createOpen} animationType="slide" onRequestClose={() => setCreateOpen(false)}>
+      <Modal visible={payoutModal !== "none"} animationType="slide" onRequestClose={closePayoutModal}>
         <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>Нова виплата</Text>
+          <Text style={styles.modalTitle}>{payoutModal === "edit" ? "Редагувати виплату" : "Нова виплата"}</Text>
 
           <Text style={styles.label}>Дата (YYYY-MM-DD)</Text>
           <TextInput style={styles.input} value={payoutDate} onChangeText={setPayoutDate} placeholder="2026-04-02" autoCapitalize="none" />
@@ -201,7 +269,7 @@ export function ExpensesScreen() {
           <TextInput style={styles.input} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="0" />
 
           <View style={styles.modalActions}>
-            <Pressable style={styles.secondaryButton} onPress={() => setCreateOpen(false)}>
+            <Pressable style={styles.secondaryButton} onPress={closePayoutModal}>
               <Text style={styles.secondaryButtonText}>Скасувати</Text>
             </Pressable>
             <Pressable
@@ -212,19 +280,27 @@ export function ExpensesScreen() {
                 try {
                   const parsed = Number(amount.replace(",", "."));
                   if (!Number.isFinite(parsed)) throw new Error("invalid amount");
-                  await createSalaryPayout({
-                    userId: user.uid,
-                    userEmail: user.email,
-                    payoutDate: payoutDate.trim(),
-                    description: description.trim(),
-                    amount: parsed,
-                  });
-                  setCreateOpen(false);
+                  if (payoutModal === "create") {
+                    await createSalaryPayout({
+                      userId: user.uid,
+                      userEmail: user.email,
+                      payoutDate: payoutDate.trim(),
+                      description: description.trim(),
+                      amount: parsed,
+                    });
+                  } else if (payoutModal === "edit" && editingPayoutId) {
+                    await updateSalaryPayout(editingPayoutId, {
+                      payoutDate: payoutDate.trim(),
+                      description: description.trim(),
+                      amount: parsed,
+                    });
+                  }
+                  closePayoutModal();
                   setDescription("");
                   setAmount("");
                   setItems(user.role === "admin" ? await listAllSalaryPayouts() : await listUserSalaryPayouts(user.uid));
                 } catch {
-                  setError("Не вдалося створити виплату.");
+                  setError(payoutModal === "edit" ? "Не вдалося зберегти зміни." : "Не вдалося створити виплату.");
                 } finally {
                   setLoading(false);
                 }
@@ -271,6 +347,28 @@ const styles = StyleSheet.create({
   cardMeta: { marginTop: 2, color: "#5b6475", fontSize: 12 },
   cardAmount: { fontWeight: "900", color: "#0b1220" },
   cardBody: { marginTop: 6, color: "#1a2740" },
+  editButton: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff",
+  },
+  editButtonText: { color: "#3158f5", fontWeight: "800" },
+  cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  deleteButton: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#f5c2c2",
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff5f5",
+  },
+  deleteButtonText: { color: "#b42318", fontWeight: "800" },
   primaryButton: { backgroundColor: "#3158f5", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center" },
   primaryButtonText: { color: "#fff", fontWeight: "800" },
   secondaryButton: { backgroundColor: "#ffffff", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center", borderWidth: 1, borderColor: "#dbe1ef" },

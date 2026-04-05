@@ -1,4 +1,4 @@
-import { addDoc, collection, getDocs, orderBy, query, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { getFirebaseDb } from "../../lib/firebase";
 import type { CreateSalaryPayoutPayload, SalaryPayout } from "./types";
 
@@ -28,5 +28,23 @@ export async function listAllSalaryPayouts(): Promise<SalaryPayout[]> {
   const snapshot = await getDocs(query(salaryPayoutsCollection, orderBy("payoutDate", "desc")));
 
   return snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as Omit<SalaryPayout, "id">) }));
+}
+
+export async function deleteSalaryPayoutAdmin(payoutId: string): Promise<void> {
+  const db = getFirebaseDb();
+  await deleteDoc(doc(db, "salaryPayouts", payoutId));
+}
+
+export async function updateSalaryPayout(
+  payoutId: string,
+  patch: { payoutDate: string; description: string; amount: number },
+): Promise<void> {
+  const db = getFirebaseDb();
+  await updateDoc(doc(db, "salaryPayouts", payoutId), {
+    payoutDate: patch.payoutDate,
+    description: patch.description,
+    amount: patch.amount,
+    updatedAt: serverTimestamp(),
+  });
 }
 
