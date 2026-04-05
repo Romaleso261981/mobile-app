@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/auth-context";
@@ -7,8 +7,16 @@ import { addCategory, listCategories } from "../entities/category/category-servi
 import type { Category } from "../entities/category/types";
 import { listAllSalaryPayouts } from "../entities/payout/payout-service";
 import type { SalaryPayout } from "../entities/payout/types";
-import { listAllWorkEntries, updateWorkEntryAdmin } from "../entities/work/work-service";
+import { deleteWorkEntryAdmin, listAllWorkEntries, updateWorkEntryAdmin } from "../entities/work/work-service";
 import type { WorkEntry } from "../entities/work/types";
+
+function deleteWorkErrorMessage(e: unknown): string {
+  const code = e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : "";
+  if (code === "permission-denied") {
+    return "Немає прав на видалення. Опублікуйте правила з файлу firestore.rules у Firebase Console → Firestore → Rules.";
+  }
+  return "Не вдалося видалити запис.";
+}
 
 export function AdminScreen() {
   const { user, logout } = useAuth();
@@ -149,17 +157,51 @@ export function AdminScreen() {
                     <Text style={styles.cardBody}>{item.categoryName}</Text>
                     <Text style={styles.cardBody}>{item.description}</Text>
                     <Text style={styles.cardAmount}>{item.amount} грн</Text>
-                    <Pressable
-                      style={styles.editButton}
-                      onPress={() => {
-                        setEditWorkId(item.id);
-                        setEditDescription(item.description);
-                        setEditAmount(String(item.amount ?? 0));
-                        setEditOpen(true);
-                      }}
-                    >
-                      <Text style={styles.editButtonText}>Редагувати</Text>
-                    </Pressable>
+                    <View style={styles.cardActions}>
+                      <Pressable
+                        style={styles.editButton}
+                        onPress={() => {
+                          setEditWorkId(item.id);
+                          setEditDescription(item.description);
+                          setEditAmount(String(item.amount ?? 0));
+                          setEditOpen(true);
+                        }}
+                      >
+                        <Text style={styles.editButtonText}>Редагувати</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.deleteButton}
+                        onPress={() => {
+                          Alert.alert("Видалити запис?", `Робота від ${item.userEmail} за ${item.workDate}. Цю дію не скасувати.`, [
+                            { text: "Ні", style: "cancel" },
+                            {
+                              text: "Видалити",
+                              style: "destructive",
+                              onPress: () => {
+                                void (async () => {
+                                  setLoading(true);
+                                  setError(null);
+                                  try {
+                                    await deleteWorkEntryAdmin(item.id);
+                                    if (editWorkId === item.id) {
+                                      setEditOpen(false);
+                                      setEditWorkId(null);
+                                    }
+                                    await loadAll();
+                                  } catch (e) {
+                                    setError(deleteWorkErrorMessage(e));
+                                  } finally {
+                                    setLoading(false);
+                                  }
+                                })();
+                              },
+                            },
+                          ]);
+                        }}
+                      >
+                        <Text style={styles.deleteButtonText}>Видалити</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 ))}
                 {works.length ? (
@@ -317,6 +359,37 @@ export function AdminScreen() {
               <Text style={styles.primaryButtonText}>Зберегти</Text>
             </Pressable>
           </View>
+          <Pressable
+            style={styles.modalDeleteLink}
+            onPress={() => {
+              if (!editWorkId || !selectedWork) return;
+              Alert.alert("Видалити запис?", "Цю дію не скасувати.", [
+                { text: "Ні", style: "cancel" },
+                {
+                  text: "Видалити",
+                  style: "destructive",
+                  onPress: () => {
+                    void (async () => {
+                      setLoading(true);
+                      setError(null);
+                      try {
+                        await deleteWorkEntryAdmin(editWorkId);
+                        setEditOpen(false);
+                        setEditWorkId(null);
+                        await loadAll();
+                      } catch (e) {
+                        setError(deleteWorkErrorMessage(e));
+                      } finally {
+                        setLoading(false);
+                      }
+                    })();
+                  },
+                },
+              ]);
+            }}
+          >
+            <Text style={styles.modalDeleteLinkText}>Видалити запис</Text>
+          </Pressable>
         </View>
       </Modal>
       </View>
@@ -379,8 +452,8 @@ const styles = StyleSheet.create({
   cardMeta: { color: "#5b6475", fontSize: 12 },
   cardBody: { marginTop: 6, color: "#1a2740" },
   cardAmount: { marginTop: 10, fontWeight: "900", color: "#0b1220" },
+  cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10, alignItems: "center" },
   editButton: {
-    marginTop: 10,
     alignSelf: "flex-start",
     borderWidth: 1,
     borderColor: "#dbe1ef",
@@ -390,6 +463,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   editButtonText: { color: "#3158f5", fontWeight: "800" },
+  deleteButton: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#f5c2c2",
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff5f5",
+  },
+  deleteButtonText: { color: "#b42318", fontWeight: "800" },
+  modalDeleteLink: { marginTop: 8, paddingVertical: 8, alignItems: "center" },
+  modalDeleteLinkText: { color: "#b42318", fontWeight: "800", textDecorationLine: "underline" },
   primaryButton: { backgroundColor: "#3158f5", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center" },
   primaryButtonText: { color: "#fff", fontWeight: "800" },
   secondaryButton: { backgroundColor: "#ffffff", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center", borderWidth: 1, borderColor: "#dbe1ef" },

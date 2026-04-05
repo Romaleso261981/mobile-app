@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { getFirebaseDb } from "../../lib/firebase";
 import type { CreateWorkEntryPayload, WorkEntry } from "./types";
 
@@ -37,5 +37,10 @@ export async function updateWorkEntryAdmin(workId: string, patch: { amount: numb
     description: patch.description,
     updatedAt: serverTimestamp(),
   });
+}
+
+export async function deleteWorkEntryAdmin(workId: string): Promise<void> {
+  const db = getFirebaseDb();
+  await deleteDoc(doc(db, "workEntries", workId));
 }
 
