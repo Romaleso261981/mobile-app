@@ -37,6 +37,8 @@ export function WorksScreen() {
   const [filterCategoryId, setFilterCategoryId] = useState<string>("");
   const [formCategoryId, setFormCategoryId] = useState<string>("");
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  /** Одна модалка списку: або фільтр списку, або категорія в формі «Нова робота». */
+  const [categoryPickerFor, setCategoryPickerFor] = useState<"filter" | "form">("filter");
 
   const selectedCategory = useMemo(() => categories.find((c) => c.id === formCategoryId) ?? null, [categories, formCategoryId]);
 
@@ -135,7 +137,13 @@ export function WorksScreen() {
               />
 
               <View style={styles.row}>
-                <Pressable style={[styles.picker, styles.rowGrow]} onPress={() => setCategoryPickerOpen(true)}>
+                <Pressable
+                  style={[styles.picker, styles.rowGrow]}
+                  onPress={() => {
+                    setCategoryPickerFor("filter");
+                    setCategoryPickerOpen(true);
+                  }}
+                >
                   <Text style={styles.pickerText}>
                     {filterCategoryId ? categories.find((c) => c.id === filterCategoryId)?.name ?? "Категорія" : "Усі категорії"}
                   </Text>
@@ -222,7 +230,13 @@ export function WorksScreen() {
           <TextInput style={styles.input} value={workDate} onChangeText={setWorkDate} placeholder="2026-04-02" autoCapitalize="none" />
 
           <Text style={styles.label}>Категорія</Text>
-          <Pressable style={styles.picker} onPress={() => setCategoryPickerOpen(true)}>
+          <Pressable
+            style={styles.picker}
+            onPress={() => {
+              setCategoryPickerFor("form");
+              setCategoryPickerOpen(true);
+            }}
+          >
             <Text style={styles.pickerText}>{selectedCategory?.name ?? "Оберіть категорію"}</Text>
           </Pressable>
 
@@ -277,21 +291,35 @@ export function WorksScreen() {
       <Modal visible={categoryPickerOpen} transparent animationType="fade" onRequestClose={() => setCategoryPickerOpen(false)}>
         <Pressable style={styles.overlay} onPress={() => setCategoryPickerOpen(false)}>
           <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>Оберіть категорію</Text>
+            <Text style={styles.sheetTitle}>
+              {categoryPickerFor === "filter" ? "Фільтр: категорія" : "Категорія для запису"}
+            </Text>
             <FlatList
-              data={[{ id: "", name: "Усі категорії" } as Category, ...categories]}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={[styles.sheetRow, item.id === filterCategoryId ? styles.sheetRowActive : null]}
-                  onPress={() => {
-                    setFilterCategoryId(item.id);
-                    setCategoryPickerOpen(false);
-                  }}
-                >
-                  <Text style={styles.sheetRowText}>{item.name}</Text>
-                </Pressable>
-              )}
+              data={
+                categoryPickerFor === "filter"
+                  ? ([{ id: "", name: "Усі категорії" } as Category, ...categories])
+                  : categories
+              }
+              keyExtractor={(item, index) => item.id || `all-${index}`}
+              renderItem={({ item }) => {
+                const rowActive =
+                  categoryPickerFor === "filter" ? item.id === filterCategoryId : item.id === formCategoryId;
+                return (
+                  <Pressable
+                    style={[styles.sheetRow, rowActive ? styles.sheetRowActive : null]}
+                    onPress={() => {
+                      if (categoryPickerFor === "filter") {
+                        setFilterCategoryId(item.id);
+                      } else {
+                        setFormCategoryId(item.id);
+                      }
+                      setCategoryPickerOpen(false);
+                    }}
+                  >
+                    <Text style={styles.sheetRowText}>{item.name}</Text>
+                  </Pressable>
+                );
+              }}
             />
           </View>
         </Pressable>
