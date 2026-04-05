@@ -2,6 +2,16 @@ import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTime
 import { getFirebaseDb } from "../../lib/firebase";
 import type { CreateSalaryPayoutPayload, SalaryPayout } from "./types";
 
+export type PayoutsViewer = { uid: string; role: "admin" | "employee" };
+
+/** Employee бачить лише свої виплати; admin — усі (екран адміністрування / витрати). */
+export async function listSalaryPayoutsForViewer(viewer: PayoutsViewer): Promise<SalaryPayout[]> {
+  if (viewer.role !== "admin") {
+    return listUserSalaryPayouts(viewer.uid);
+  }
+  return listAllSalaryPayouts();
+}
+
 export async function createSalaryPayout(payload: CreateSalaryPayoutPayload): Promise<void> {
   const db = getFirebaseDb();
   const salaryPayoutsCollection = collection(db, "salaryPayouts");

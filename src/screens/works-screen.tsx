@@ -9,10 +9,10 @@ import type { Category } from "../entities/category/types";
 import {
   createWorkEntry,
   deleteWorkEntryAdmin,
-  listAllWorkEntries,
-  listUserWorkEntries,
+  listWorkEntriesForViewer,
   updateWorkEntryAdmin,
 } from "../entities/work/work-service";
+import { getRequestAuthUid } from "../lib/request-auth";
 import type { WorkEntry } from "../entities/work/types";
 import { firestoreActionError } from "../shared/firestore-errors";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
@@ -55,7 +55,6 @@ export function WorksScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<WorkEntry[]>([]);
 
-  const [searchTerm, setSearchTerm] = useState("");
   const [datePreset, setDatePreset] = useState<DateFilterPreset>("all");
   const [dateYear, setDateYear] = useState(() => String(new Date().getFullYear()));
   const [dateMonth, setDateMonth] = useState(() => {
@@ -120,20 +119,13 @@ export function WorksScreen() {
   }, []);
 
   const filteredItems = useMemo(() => {
-    const s = searchTerm.trim().toLowerCase();
     return items.filter((item) => {
-      const matchesSearch = !s
-        ? true
-        : item.description.toLowerCase().includes(s) ||
-          item.workDate.includes(s) ||
-          item.categoryName.toLowerCase().includes(s) ||
-          item.userEmail.toLowerCase().includes(s);
       const matchesCategory = filterCategoryId ? item.categoryId === filterCategoryId : true;
       const matchesEmployee = filterEmployeeId ? item.userId === filterEmployeeId : true;
       const matchesDate = matchesDateString(item.workDate, datePreset, dateYear, dateMonth, dateFrom, dateTo);
-      return matchesSearch && matchesCategory && matchesEmployee && matchesDate;
+      return matchesCategory && matchesEmployee && matchesDate;
     });
-  }, [dateFrom, dateMonth, datePreset, dateTo, dateYear, filterCategoryId, filterEmployeeId, items, searchTerm]);
+  }, [dateFrom, dateMonth, datePreset, dateTo, dateYear, filterCategoryId, filterEmployeeId, items]);
 
   const filteredTotal = useMemo(() => filteredItems.reduce((acc, item) => acc + (item.amount ?? 0), 0), [filteredItems]);
   const pageCount = useMemo(() => Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE)), [filteredItems.length]);
@@ -144,18 +136,33 @@ export function WorksScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, datePreset, dateYear, dateMonth, dateFrom, dateTo, filterCategoryId, filterEmployeeId]);
+  }, [datePreset, dateYear, dateMonth, dateFrom, dateTo, filterCategoryId, filterEmployeeId]);
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
 
+  async function reloadWorkItemsOnly(): Promise<void> {
+    if (!user) return;
+    const expectedUid = user.uid;
+    const role = user.role;
+    try {
+      const works = await listWorkEntriesForViewer({ uid: expectedUid, role });
+      if (getRequestAuthUid() !== expectedUid) return;
+      setItems(works);
+    } catch {
+      setError("Не вдалося оновити список робіт.");
+    }
+  }
+
   async function loadAll() {
     if (!user) return;
+    const expectedUid = user.uid;
     setError(null);
     setLoading(true);
     try {
-      const [cats, works] = await Promise.all([listCategories(), user.role === "admin" ? listAllWorkEntries() : listUserWorkEntries(user.uid)]);
+      const [cats, works] = await Promise.all([listCategories(), listWorkEntriesForViewer({ uid: user.uid, role: user.role })]);
+      if (getRequestAuthUid() !== expectedUid) return;
       setCategories(cats);
       setItems(works);
       if (!formCategoryId && cats[0]) setFormCategoryId(cats[0].id);
@@ -167,6 +174,15 @@ export function WorksScreen() {
   }
 
   useEffect(() => {
+    if (!user) {
+      setItems([]);
+      setCategories([]);
+      setFormCategoryId("");
+      setError(null);
+      return;
+    }
+    setFormCategoryId("");
+    setItems([]);
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.role]);
@@ -241,15 +257,20 @@ export function WorksScreen() {
           <View style={styles.headerLeft}>
             <Text style={styles.title}>Роботи</Text>
           </View>
-          <Pressable style={styles.primaryButton} onPress={() => setCreateOpen(true)}>
-            <Text style={styles.primaryButtonText}>+ Додати</Text>
+          <Pressable style={styles.secondaryButton} onPress={() => setCreateOpen(true)}>
+            <View style={styles.buttonContentRow}>
+              <Ionicons name="add-circle-outline" size={18} color="#3158f5" />
+              <Text style={styles.secondaryButtonText}>Додати</Text>
+            </View>
           </Pressable>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.meta} numberOfLines={1}>{user?.email}</Text>
-          <Pressable style={styles.logoutChip} onPress={() => logout()}>
-            <Ionicons name="log-out-outline" size={14} color="#3158f5" />
-            <Text style={styles.logoutChipText}>Вийти</Text>
+          <Pressable style={styles.secondaryButton} onPress={() => logout()}>
+            <View style={styles.buttonContentRow}>
+              <Ionicons name="log-out-outline" size={18} color="#3158f5" />
+              <Text style={styles.secondaryButtonText}>Вийти</Text>
+            </View>
           </Pressable>
         </View>
       </View>
@@ -258,28 +279,14 @@ export function WorksScreen() {
         <View style={styles.center}>
           <ActivityIndicator />
         </View>
+      ) : error ? (
+        <View style={styles.center}>
+          <Text style={styles.error}>{error}</Text>
+          <Pressable style={styles.secondaryButton} onPress={() => loadAll()}>
+            <Text style={styles.secondaryButtonText}>Спробувати ще</Text>
+          </Pressable>
+        </View>
       ) : (
-        <>
-          <View style={styles.searchBar}>
-            <TextInput
-              style={styles.input}
-              value={searchTerm}
-              onChangeText={setSearchTerm}
-              placeholder={
-                user?.role === "admin"
-                  ? "Пошук (опис/дата/категорія/email)"
-                  : "Пошук (опис/дата/категорія)"
-              }
-            />
-          </View>
-          {error ? (
-            <View style={styles.center}>
-              <Text style={styles.error}>{error}</Text>
-              <Pressable style={styles.secondaryButton} onPress={() => loadAll()}>
-                <Text style={styles.secondaryButtonText}>Спробувати ще</Text>
-              </Pressable>
-            </View>
-          ) : (
         <FlatList
           style={styles.listFlex}
           data={paginatedItems}
@@ -391,7 +398,7 @@ export function WorksScreen() {
             if (!user) return;
             setRefreshing(true);
             try {
-              setItems(user.role === "admin" ? await listAllWorkEntries() : await listUserWorkEntries(user.uid));
+              await reloadWorkItemsOnly();
             } finally {
               setRefreshing(false);
             }
@@ -431,7 +438,7 @@ export function WorksScreen() {
                 {canModify ? (
                   <View style={styles.cardActions}>
                     <Pressable
-                      style={styles.editOutlineButton}
+                      style={styles.secondaryButton}
                       onPress={() => {
                         setEditWorkId(item.id);
                         setEditWorkDate(item.workDate);
@@ -441,10 +448,10 @@ export function WorksScreen() {
                         setEditWorkOpen(true);
                       }}
                     >
-                      <Text style={styles.editOutlineButtonText}>Редагувати</Text>
+                      <Text style={styles.secondaryButtonText}>Редагувати</Text>
                     </Pressable>
                     <Pressable
-                      style={styles.deleteOutlineButton}
+                      style={styles.secondaryButtonDanger}
                       onPress={() => {
                         Alert.alert("Видалити запис?", "Цю дію не скасувати.", [
                           { text: "Ні", style: "cancel" },
@@ -461,7 +468,7 @@ export function WorksScreen() {
                                     setEditWorkOpen(false);
                                     setEditWorkId(null);
                                   }
-                                  setItems(user.role === "admin" ? await listAllWorkEntries() : await listUserWorkEntries(user.uid));
+                                  void reloadWorkItemsOnly();
                                 } catch (e) {
                                   setError(firestoreActionError(e, "Не вдалося видалити запис."));
                                 } finally {
@@ -473,7 +480,7 @@ export function WorksScreen() {
                         ]);
                       }}
                     >
-                      <Text style={styles.deleteOutlineButtonText}>Видалити</Text>
+                      <Text style={styles.secondaryButtonDangerText}>Видалити</Text>
                     </Pressable>
                   </View>
                 ) : null}
@@ -481,8 +488,6 @@ export function WorksScreen() {
             );
           }}
         />
-          )}
-        </>
       )}
 
       <Modal visible={createOpen} animationType="slide" onRequestClose={() => setCreateOpen(false)}>
@@ -510,11 +515,11 @@ export function WorksScreen() {
           <TextInput style={styles.input} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="0" />
 
           <View style={styles.modalActions}>
-            <Pressable style={styles.secondaryButton} onPress={() => setCreateOpen(false)}>
+            <Pressable style={[styles.secondaryButton, styles.modalActionButton]} onPress={() => setCreateOpen(false)}>
               <Text style={styles.secondaryButtonText}>Скасувати</Text>
             </Pressable>
             <Pressable
-              style={styles.primaryButton}
+              style={[styles.secondaryButton, styles.modalActionButton]}
               onPress={async () => {
                 if (!user) return;
                 const category = categories.find((c) => c.id === formCategoryId);
@@ -537,7 +542,7 @@ export function WorksScreen() {
                   setCreateOpen(false);
                   setDescription("");
                   setAmount("");
-                  setItems(user.role === "admin" ? await listAllWorkEntries() : await listUserWorkEntries(user.uid));
+                  void reloadWorkItemsOnly();
                 } catch {
                   setError("Не вдалося створити запис.");
                 } finally {
@@ -545,7 +550,7 @@ export function WorksScreen() {
                 }
               }}
             >
-              <Text style={styles.primaryButtonText}>Зберегти</Text>
+              <Text style={styles.secondaryButtonText}>Зберегти</Text>
             </Pressable>
           </View>
         </View>
@@ -577,7 +582,7 @@ export function WorksScreen() {
 
           <View style={styles.modalActions}>
             <Pressable
-              style={styles.secondaryButton}
+              style={[styles.secondaryButton, styles.modalActionButton]}
               onPress={() => {
                 setEditWorkOpen(false);
                 setEditWorkId(null);
@@ -586,7 +591,7 @@ export function WorksScreen() {
               <Text style={styles.secondaryButtonText}>Скасувати</Text>
             </Pressable>
             <Pressable
-              style={styles.primaryButton}
+              style={[styles.secondaryButton, styles.modalActionButton]}
               onPress={async () => {
                 if (!user || !editWorkId) return;
                 const category = categories.find((c) => c.id === editCategoryId);
@@ -607,7 +612,7 @@ export function WorksScreen() {
                   });
                   setEditWorkOpen(false);
                   setEditWorkId(null);
-                  setItems(user.role === "admin" ? await listAllWorkEntries() : await listUserWorkEntries(user.uid));
+                  void reloadWorkItemsOnly();
                 } catch (e) {
                   setError(firestoreActionError(e, "Не вдалося зберегти зміни."));
                 } finally {
@@ -615,7 +620,7 @@ export function WorksScreen() {
                 }
               }}
             >
-              <Text style={styles.primaryButtonText}>Зберегти</Text>
+              <Text style={styles.secondaryButtonText}>Зберегти</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -719,12 +724,12 @@ export function WorksScreen() {
           <View style={[styles.sheet, styles.monthPickerSheet]}>
             <Text style={styles.sheetTitle}>Оберіть місяць</Text>
             <View style={styles.monthPickerYearRow}>
-              <Pressable style={styles.monthPickerYearChevron} onPress={() => setMonthPickerYear((p) => p - 1)} hitSlop={8}>
-                <Ionicons name="chevron-back" size={24} color="#3158f5" />
+              <Pressable style={styles.monthNavButton} onPress={() => setMonthPickerYear((p) => p - 1)} hitSlop={8}>
+                <Ionicons name="chevron-back" size={22} color="#3158f5" />
               </Pressable>
               <Text style={styles.monthPickerYearText}>{monthPickerYear}</Text>
-              <Pressable style={styles.monthPickerYearChevron} onPress={() => setMonthPickerYear((p) => p + 1)} hitSlop={8}>
-                <Ionicons name="chevron-forward" size={24} color="#3158f5" />
+              <Pressable style={styles.monthNavButton} onPress={() => setMonthPickerYear((p) => p + 1)} hitSlop={8}>
+                <Ionicons name="chevron-forward" size={22} color="#3158f5" />
               </Pressable>
             </View>
             <View style={styles.monthGrid}>
@@ -765,11 +770,11 @@ export function WorksScreen() {
                 }}
               />
               <View style={styles.calendarActions}>
-                <Pressable onPress={() => setCalendarTarget(null)} hitSlop={8}>
-                  <Text style={styles.calendarCancelText}>Скасувати</Text>
+                <Pressable style={[styles.secondaryButton, styles.calendarActionButton]} onPress={() => setCalendarTarget(null)}>
+                  <Text style={styles.secondaryButtonText}>Скасувати</Text>
                 </Pressable>
-                <Pressable onPress={commitRangeCalendar} hitSlop={8}>
-                  <Text style={styles.calendarDoneText}>Готово</Text>
+                <Pressable style={[styles.secondaryButton, styles.calendarActionButton]} onPress={commitRangeCalendar}>
+                  <Text style={styles.secondaryButtonText}>Готово</Text>
                 </Pressable>
               </View>
             </Pressable>
@@ -810,11 +815,11 @@ export function WorksScreen() {
                 } as Record<string, unknown>)}
               </View>
               <View style={styles.calendarActions}>
-                <Pressable onPress={() => setCalendarTarget(null)} hitSlop={8}>
-                  <Text style={styles.calendarCancelText}>Скасувати</Text>
+                <Pressable style={[styles.secondaryButton, styles.calendarActionButton]} onPress={() => setCalendarTarget(null)}>
+                  <Text style={styles.secondaryButtonText}>Скасувати</Text>
                 </Pressable>
-                <Pressable onPress={commitRangeCalendar} hitSlop={8}>
-                  <Text style={styles.calendarDoneText}>Готово</Text>
+                <Pressable style={[styles.secondaryButton, styles.calendarActionButton]} onPress={commitRangeCalendar}>
+                  <Text style={styles.secondaryButtonText}>Готово</Text>
                 </Pressable>
               </View>
             </Pressable>
@@ -835,18 +840,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: "800", color: "#0b1220" },
   metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 2 },
   meta: { color: "#5b6475", marginTop: 2, flex: 1, marginRight: 8 },
-  logoutChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    borderWidth: 1,
-    borderColor: "#dbe1ef",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: "#fff",
-  },
-  logoutChipText: { color: "#3158f5", fontWeight: "800", fontSize: 12 },
+  buttonContentRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   error: { color: "#ce2e2e", textAlign: "center" },
   emptyContainer: { flexGrow: 1, alignItems: "center", justifyContent: "center", paddingVertical: 40 },
@@ -859,32 +853,32 @@ const styles = StyleSheet.create({
   cardUserEmail: { marginTop: 4, color: "#5b6475", fontSize: 12 },
   cardAmount: { marginTop: 10, fontWeight: "800", color: "#0b1220" },
   cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
-  editOutlineButton: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: "#dbe1ef",
-    borderRadius: 10,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    backgroundColor: "#fff",
-  },
-  editOutlineButtonText: { color: "#3158f5", fontWeight: "800" },
-  deleteOutlineButton: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: "#f5c2c2",
-    borderRadius: 10,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    backgroundColor: "#fff5f5",
-  },
-  deleteOutlineButtonText: { color: "#b42318", fontWeight: "800" },
   editScroll: { flex: 1, backgroundColor: "#fff" },
   editScrollContent: { padding: 16, gap: 10, paddingBottom: 32 },
-  primaryButton: { backgroundColor: "#3158f5", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center" },
-  primaryButtonText: { color: "#fff", fontWeight: "800" },
-  secondaryButton: { backgroundColor: "#ffffff", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center", borderWidth: 1, borderColor: "#dbe1ef" },
+  secondaryButton: {
+    alignSelf: "flex-start",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+  },
   secondaryButtonText: { color: "#3158f5", fontWeight: "800" },
+  secondaryButtonDanger: {
+    alignSelf: "flex-start",
+    backgroundColor: "#fff5f5",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#f5c2c2",
+  },
+  secondaryButtonDangerText: { color: "#b42318", fontWeight: "800" },
   modalContainer: { flex: 1, padding: 16, gap: 10, backgroundColor: "#fff" },
   modalTitle: { fontSize: 20, fontWeight: "800", marginBottom: 6 },
   label: { color: "#5b6475", fontWeight: "700" },
@@ -895,9 +889,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#dbe1ef",
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    backgroundColor: "#f8faff",
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 10,
+    backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -911,20 +906,28 @@ const styles = StyleSheet.create({
   },
   calendarActions: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    gap: 10,
+    alignItems: "stretch",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: "#e7ecfb",
   },
-  calendarCancelText: { color: "#5b6475", fontWeight: "700", fontSize: 16 },
-  calendarDoneText: { color: "#3158f5", fontWeight: "800", fontSize: 16 },
+  calendarActionButton: { flex: 1, alignSelf: "stretch" },
   webDateInputWrap: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
   textarea: { minHeight: 90, textAlignVertical: "top" },
-  picker: { borderWidth: 1, borderColor: "#dbe1ef", borderRadius: 12, padding: 12, backgroundColor: "#f8faff" },
-  pickerText: { color: "#0b1220", fontWeight: "700" },
-  modalActions: { flexDirection: "row", gap: 12, marginTop: 10 },
+  picker: {
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+  },
+  pickerText: { color: "#3158f5", fontWeight: "800" },
+  modalActions: { flexDirection: "row", gap: 10, marginTop: 10, alignItems: "stretch" },
+  modalActionButton: { flex: 1, alignSelf: "stretch" },
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
   sheet: { backgroundColor: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 14, maxHeight: "70%" },
   monthPickerSheet: { maxHeight: "85%" },
@@ -933,18 +936,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 16,
+    gap: 12,
     marginBottom: 14,
     paddingVertical: 4,
   },
-  monthPickerYearChevron: { padding: 4 },
+  monthNavButton: {
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+    borderRadius: 12,
+    minWidth: 44,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   monthPickerYearText: { fontSize: 22, fontWeight: "800", color: "#0b1220", minWidth: 72, textAlign: "center" },
   monthGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "space-between", paddingBottom: 8 },
   monthCell: {
     width: "31%",
     borderWidth: 1,
     borderColor: "#dbe1ef",
-    borderRadius: 10,
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 6,
     backgroundColor: "#fff",
@@ -953,10 +966,9 @@ const styles = StyleSheet.create({
   monthCellActive: { borderColor: "#3158f5", backgroundColor: "#eef2ff" },
   monthCellText: { fontWeight: "700", fontSize: 13, color: "#0b1220", textAlign: "center" },
   monthCellTextActive: { color: "#3158f5" },
-  sheetRow: { paddingVertical: 12, paddingHorizontal: 10, borderRadius: 10 },
+  sheetRow: { paddingVertical: 12, paddingHorizontal: 10, borderRadius: 12 },
   sheetRowActive: { backgroundColor: "#eef2ff" },
   sheetRowText: { fontWeight: "700", color: "#0b1220" },
-  searchBar: { marginBottom: 4 },
   listFlex: { flex: 1 },
   filters: { gap: 10, marginBottom: 12 },
   row: { flexDirection: "row", gap: 10, alignItems: "center" },

@@ -2,6 +2,19 @@ import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTime
 import { getFirebaseDb } from "../../lib/firebase";
 import type { CreateWorkEntryPayload, WorkEntry } from "./types";
 
+/** Хто дивиться список: лише admin отримує повну вибірку; employee — завжди лише свої записи. */
+export type WorkEntriesViewer = { uid: string; role: "admin" | "employee" };
+
+/**
+ * Єдиний вхід для екранів «Роботи»: не покладайтеся лише на UI — employee ніколи не викликає повний список.
+ */
+export async function listWorkEntriesForViewer(viewer: WorkEntriesViewer): Promise<WorkEntry[]> {
+  if (viewer.role !== "admin") {
+    return listUserWorkEntries(viewer.uid);
+  }
+  return listAllWorkEntries();
+}
+
 export async function createWorkEntry(payload: CreateWorkEntryPayload): Promise<void> {
   const db = getFirebaseDb();
   const workEntriesCollection = collection(db, "workEntries");

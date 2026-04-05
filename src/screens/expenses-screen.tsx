@@ -7,10 +7,10 @@ import { useAuth } from "../auth/auth-context";
 import {
   createSalaryPayout,
   deleteSalaryPayoutAdmin,
-  listAllSalaryPayouts,
-  listUserSalaryPayouts,
+  listSalaryPayoutsForViewer,
   updateSalaryPayout,
 } from "../entities/payout/payout-service";
+import { getRequestAuthUid } from "../lib/request-auth";
 import type { SalaryPayout } from "../entities/payout/types";
 import { firestoreActionError } from "../shared/firestore-errors";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
@@ -51,7 +51,6 @@ export function ExpensesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<SalaryPayout[]>([]);
 
-  const [searchTerm, setSearchTerm] = useState("");
   const [datePreset, setDatePreset] = useState<DateFilterPreset>("all");
   const [dateYear, setDateYear] = useState(() => String(new Date().getFullYear()));
   const [dateMonth, setDateMonth] = useState(() => {
@@ -161,13 +160,10 @@ export function ExpensesScreen() {
   );
 
   const filteredItems = useMemo(() => {
-    const s = searchTerm.trim().toLowerCase();
     return items.filter((item) => {
-      const matchesSearch = !s ? true : item.description.toLowerCase().includes(s) || item.payoutDate.includes(s);
-      const matchesDate = matchesDateString(item.payoutDate, datePreset, dateYear, dateMonth, dateFrom, dateTo);
-      return matchesSearch && matchesDate;
+      return matchesDateString(item.payoutDate, datePreset, dateYear, dateMonth, dateFrom, dateTo);
     });
-  }, [dateFrom, dateMonth, datePreset, dateTo, dateYear, items, searchTerm]);
+  }, [dateFrom, dateMonth, datePreset, dateTo, dateYear, items]);
 
   const filteredTotal = useMemo(() => filteredItems.reduce((acc, item) => acc + (item.amount ?? 0), 0), [filteredItems]);
   const pageCount = useMemo(() => Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE)), [filteredItems.length]);
@@ -178,18 +174,34 @@ export function ExpensesScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, datePreset, dateYear, dateMonth, dateFrom, dateTo]);
+  }, [datePreset, dateYear, dateMonth, dateFrom, dateTo]);
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
 
+  async function reloadPayoutItemsOnly(): Promise<void> {
+    if (!user) return;
+    const expectedUid = user.uid;
+    const role = user.role;
+    try {
+      const rows = await listSalaryPayoutsForViewer({ uid: expectedUid, role });
+      if (getRequestAuthUid() !== expectedUid) return;
+      setItems(rows);
+    } catch {
+      setError("Не вдалося оновити список виплат.");
+    }
+  }
+
   async function loadAll() {
     if (!user) return;
+    const expectedUid = user.uid;
     setError(null);
     setLoading(true);
     try {
-      setItems(user.role === "admin" ? await listAllSalaryPayouts() : await listUserSalaryPayouts(user.uid));
+      const rows = await listSalaryPayoutsForViewer({ uid: user.uid, role: user.role });
+      if (getRequestAuthUid() !== expectedUid) return;
+      setItems(rows);
     } catch {
       setError("Не вдалося завантажити виплати.");
     } finally {
@@ -198,6 +210,12 @@ export function ExpensesScreen() {
   }
 
   useEffect(() => {
+    if (!user) {
+      setItems([]);
+      setError(null);
+      return;
+    }
+    setItems([]);
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.role]);
@@ -210,15 +228,20 @@ export function ExpensesScreen() {
           <View style={styles.headerLeft}>
             <Text style={styles.title}>Витрати</Text>
           </View>
-          <Pressable style={styles.primaryButton} onPress={openCreatePayout}>
-            <Text style={styles.primaryButtonText}>+ Додати</Text>
+          <Pressable style={styles.secondaryButton} onPress={openCreatePayout}>
+            <View style={styles.buttonContentRow}>
+              <Ionicons name="add-circle-outline" size={18} color="#3158f5" />
+              <Text style={styles.secondaryButtonText}>Додати</Text>
+            </View>
           </Pressable>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.meta} numberOfLines={1}>{user?.email}</Text>
-          <Pressable style={styles.logoutChip} onPress={() => logout()}>
-            <Ionicons name="log-out-outline" size={14} color="#3158f5" />
-            <Text style={styles.logoutChipText}>Вийти</Text>
+          <Pressable style={styles.secondaryButton} onPress={() => logout()}>
+            <View style={styles.buttonContentRow}>
+              <Ionicons name="log-out-outline" size={18} color="#3158f5" />
+              <Text style={styles.secondaryButtonText}>Вийти</Text>
+            </View>
           </Pressable>
         </View>
       </View>
@@ -227,19 +250,14 @@ export function ExpensesScreen() {
         <View style={styles.center}>
           <ActivityIndicator />
         </View>
+      ) : error ? (
+        <View style={styles.center}>
+          <Text style={styles.error}>{error}</Text>
+          <Pressable style={styles.secondaryButton} onPress={() => loadAll()}>
+            <Text style={styles.secondaryButtonText}>Спробувати ще</Text>
+          </Pressable>
+        </View>
       ) : (
-        <>
-          <View style={styles.searchBar}>
-            <TextInput style={styles.input} value={searchTerm} onChangeText={setSearchTerm} placeholder="Пошук (опис/дата)" />
-          </View>
-          {error ? (
-            <View style={styles.center}>
-              <Text style={styles.error}>{error}</Text>
-              <Pressable style={styles.secondaryButton} onPress={() => loadAll()}>
-                <Text style={styles.secondaryButtonText}>Спробувати ще</Text>
-              </Pressable>
-            </View>
-          ) : (
         <FlatList
           style={styles.listFlex}
           data={paginatedItems}
@@ -325,7 +343,7 @@ export function ExpensesScreen() {
             if (!user) return;
             setRefreshing(true);
             try {
-              setItems(user.role === "admin" ? await listAllSalaryPayouts() : await listUserSalaryPayouts(user.uid));
+              await reloadPayoutItemsOnly();
             } finally {
               setRefreshing(false);
             }
@@ -363,11 +381,11 @@ export function ExpensesScreen() {
                 <Text style={styles.cardBody}>{item.description}</Text>
                 {canModify ? (
                   <View style={styles.cardActions}>
-                    <Pressable style={styles.editButton} onPress={() => openEditPayout(item)}>
-                      <Text style={styles.editButtonText}>Редагувати</Text>
+                    <Pressable style={styles.secondaryButton} onPress={() => openEditPayout(item)}>
+                      <Text style={styles.secondaryButtonText}>Редагувати</Text>
                     </Pressable>
                     <Pressable
-                      style={styles.deleteButton}
+                      style={styles.secondaryButtonDanger}
                       onPress={() => {
                         Alert.alert("Видалити виплату?", "Цю дію не скасувати.", [
                           { text: "Ні", style: "cancel" },
@@ -393,7 +411,7 @@ export function ExpensesScreen() {
                         ]);
                       }}
                     >
-                      <Text style={styles.deleteButtonText}>Видалити</Text>
+                      <Text style={styles.secondaryButtonDangerText}>Видалити</Text>
                     </Pressable>
                   </View>
                 ) : null}
@@ -401,8 +419,6 @@ export function ExpensesScreen() {
             );
           }}
         />
-          )}
-        </>
       )}
 
       <Modal visible={yearPickerOpen} transparent animationType="fade" onRequestClose={() => setYearPickerOpen(false)}>
@@ -433,12 +449,12 @@ export function ExpensesScreen() {
           <View style={[styles.sheet, styles.monthPickerSheet]}>
             <Text style={styles.sheetTitle}>Оберіть місяць</Text>
             <View style={styles.monthPickerYearRow}>
-              <Pressable style={styles.monthPickerYearChevron} onPress={() => setMonthPickerYear((p) => p - 1)} hitSlop={8}>
-                <Ionicons name="chevron-back" size={24} color="#3158f5" />
+              <Pressable style={styles.monthNavButton} onPress={() => setMonthPickerYear((p) => p - 1)} hitSlop={8}>
+                <Ionicons name="chevron-back" size={22} color="#3158f5" />
               </Pressable>
               <Text style={styles.monthPickerYearText}>{monthPickerYear}</Text>
-              <Pressable style={styles.monthPickerYearChevron} onPress={() => setMonthPickerYear((p) => p + 1)} hitSlop={8}>
-                <Ionicons name="chevron-forward" size={24} color="#3158f5" />
+              <Pressable style={styles.monthNavButton} onPress={() => setMonthPickerYear((p) => p + 1)} hitSlop={8}>
+                <Ionicons name="chevron-forward" size={22} color="#3158f5" />
               </Pressable>
             </View>
             <View style={styles.monthGrid}>
@@ -479,11 +495,11 @@ export function ExpensesScreen() {
                 }}
               />
               <View style={styles.calendarActions}>
-                <Pressable onPress={() => setCalendarTarget(null)} hitSlop={8}>
-                  <Text style={styles.calendarCancelText}>Скасувати</Text>
+                <Pressable style={[styles.secondaryButton, styles.calendarActionButton]} onPress={() => setCalendarTarget(null)}>
+                  <Text style={styles.secondaryButtonText}>Скасувати</Text>
                 </Pressable>
-                <Pressable onPress={commitRangeCalendar} hitSlop={8}>
-                  <Text style={styles.calendarDoneText}>Готово</Text>
+                <Pressable style={[styles.secondaryButton, styles.calendarActionButton]} onPress={commitRangeCalendar}>
+                  <Text style={styles.secondaryButtonText}>Готово</Text>
                 </Pressable>
               </View>
             </Pressable>
@@ -524,11 +540,11 @@ export function ExpensesScreen() {
                 } as Record<string, unknown>)}
               </View>
               <View style={styles.calendarActions}>
-                <Pressable onPress={() => setCalendarTarget(null)} hitSlop={8}>
-                  <Text style={styles.calendarCancelText}>Скасувати</Text>
+                <Pressable style={[styles.secondaryButton, styles.calendarActionButton]} onPress={() => setCalendarTarget(null)}>
+                  <Text style={styles.secondaryButtonText}>Скасувати</Text>
                 </Pressable>
-                <Pressable onPress={commitRangeCalendar} hitSlop={8}>
-                  <Text style={styles.calendarDoneText}>Готово</Text>
+                <Pressable style={[styles.secondaryButton, styles.calendarActionButton]} onPress={commitRangeCalendar}>
+                  <Text style={styles.secondaryButtonText}>Готово</Text>
                 </Pressable>
               </View>
             </Pressable>
@@ -550,11 +566,11 @@ export function ExpensesScreen() {
           <TextInput style={styles.input} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="0" />
 
           <View style={styles.modalActions}>
-            <Pressable style={styles.secondaryButton} onPress={closePayoutModal}>
+            <Pressable style={[styles.secondaryButton, styles.modalActionButton]} onPress={closePayoutModal}>
               <Text style={styles.secondaryButtonText}>Скасувати</Text>
             </Pressable>
             <Pressable
-              style={styles.primaryButton}
+              style={[styles.secondaryButton, styles.modalActionButton]}
               onPress={async () => {
                 if (!user) return;
                 setLoading(true);
@@ -579,7 +595,7 @@ export function ExpensesScreen() {
                   closePayoutModal();
                   setDescription("");
                   setAmount("");
-                  setItems(user.role === "admin" ? await listAllSalaryPayouts() : await listUserSalaryPayouts(user.uid));
+                  await reloadPayoutItemsOnly();
                 } catch {
                   setError(payoutModal === "edit" ? "Не вдалося зберегти зміни." : "Не вдалося створити виплату.");
                 } finally {
@@ -587,7 +603,7 @@ export function ExpensesScreen() {
                 }
               }}
             >
-              <Text style={styles.primaryButtonText}>Зберегти</Text>
+              <Text style={styles.secondaryButtonText}>Зберегти</Text>
             </Pressable>
           </View>
         </View>
@@ -606,18 +622,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: "800", color: "#0b1220" },
   metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 2 },
   meta: { color: "#5b6475", marginTop: 2, flex: 1, marginRight: 8 },
-  logoutChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    borderWidth: 1,
-    borderColor: "#dbe1ef",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: "#fff",
-  },
-  logoutChipText: { color: "#3158f5", fontWeight: "800", fontSize: 12 },
+  buttonContentRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   error: { color: "#ce2e2e", textAlign: "center" },
   emptyContainer: { flexGrow: 1, alignItems: "center", justifyContent: "center", paddingVertical: 40 },
@@ -628,32 +633,32 @@ const styles = StyleSheet.create({
   cardMeta: { marginTop: 2, color: "#5b6475", fontSize: 12 },
   cardAmount: { fontWeight: "900", color: "#0b1220" },
   cardBody: { marginTop: 6, color: "#1a2740" },
-  editButton: {
-    marginTop: 10,
+  cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  secondaryButton: {
     alignSelf: "flex-start",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: "#dbe1ef",
-    borderRadius: 10,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    backgroundColor: "#fff",
   },
-  editButtonText: { color: "#3158f5", fontWeight: "800" },
-  cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
-  deleteButton: {
+  secondaryButtonText: { color: "#3158f5", fontWeight: "800" },
+  secondaryButtonDanger: {
     alignSelf: "flex-start",
+    backgroundColor: "#fff5f5",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: "#f5c2c2",
-    borderRadius: 10,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    backgroundColor: "#fff5f5",
   },
-  deleteButtonText: { color: "#b42318", fontWeight: "800" },
-  primaryButton: { backgroundColor: "#3158f5", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center" },
-  primaryButtonText: { color: "#fff", fontWeight: "800" },
-  secondaryButton: { backgroundColor: "#ffffff", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center", borderWidth: 1, borderColor: "#dbe1ef" },
-  secondaryButtonText: { color: "#3158f5", fontWeight: "800" },
+  secondaryButtonDangerText: { color: "#b42318", fontWeight: "800" },
+  modalActionButton: { flex: 1, alignSelf: "stretch" },
   modalContainer: { flex: 1, padding: 16, gap: 10, backgroundColor: "#fff" },
   modalTitle: { fontSize: 20, fontWeight: "800", marginBottom: 6 },
   label: { color: "#5b6475", fontWeight: "700" },
@@ -664,15 +669,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#dbe1ef",
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    backgroundColor: "#f8faff",
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 10,
+    backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
   },
   textarea: { minHeight: 90, textAlignVertical: "top" },
-  modalActions: { flexDirection: "row", gap: 12, marginTop: 10 },
-  searchBar: { marginBottom: 4 },
+  modalActions: { flexDirection: "row", gap: 10, marginTop: 10, alignItems: "stretch" },
   listFlex: { flex: 1 },
   filters: { gap: 10, marginBottom: 12 },
   row: { flexDirection: "row", gap: 10, alignItems: "center" },
@@ -681,25 +686,35 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 14, maxHeight: "70%" },
   monthPickerSheet: { maxHeight: "85%" },
   sheetTitle: { fontWeight: "800", fontSize: 16, marginBottom: 10 },
-  sheetRow: { paddingVertical: 12, paddingHorizontal: 10, borderRadius: 10 },
+  sheetRow: { paddingVertical: 12, paddingHorizontal: 10, borderRadius: 12 },
   sheetRowActive: { backgroundColor: "#eef2ff" },
   sheetRowText: { fontWeight: "700", color: "#0b1220" },
   monthPickerYearRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 16,
+    gap: 12,
     marginBottom: 14,
     paddingVertical: 4,
   },
-  monthPickerYearChevron: { padding: 4 },
+  monthNavButton: {
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+    borderRadius: 12,
+    minWidth: 44,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   monthPickerYearText: { fontSize: 22, fontWeight: "800", color: "#0b1220", minWidth: 72, textAlign: "center" },
   monthGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "space-between", paddingBottom: 8 },
   monthCell: {
     width: "31%",
     borderWidth: 1,
     borderColor: "#dbe1ef",
-    borderRadius: 10,
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 6,
     backgroundColor: "#fff",
@@ -718,15 +733,14 @@ const styles = StyleSheet.create({
   },
   calendarActions: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    gap: 10,
+    alignItems: "stretch",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: "#e7ecfb",
   },
-  calendarCancelText: { color: "#5b6475", fontWeight: "700", fontSize: 16 },
-  calendarDoneText: { color: "#3158f5", fontWeight: "800", fontSize: 16 },
+  calendarActionButton: { flex: 1, alignSelf: "stretch" },
   webDateInputWrap: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
   totalBanner: { backgroundColor: "#0b1220", borderRadius: 12, padding: 12, flexDirection: "row", justifyContent: "space-between" },
   totalLabel: { color: "#cbd5f5", fontWeight: "800" },

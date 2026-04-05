@@ -5,9 +5,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/auth-context";
 import { addCategory, listCategories } from "../entities/category/category-service";
 import type { Category } from "../entities/category/types";
-import { deleteSalaryPayoutAdmin, listAllSalaryPayouts } from "../entities/payout/payout-service";
+import { deleteSalaryPayoutAdmin, listSalaryPayoutsForViewer } from "../entities/payout/payout-service";
 import type { SalaryPayout } from "../entities/payout/types";
-import { deleteWorkEntryAdmin, listAllWorkEntries, updateWorkEntryAdmin } from "../entities/work/work-service";
+import { deleteWorkEntryAdmin, listWorkEntriesForViewer, updateWorkEntryAdmin } from "../entities/work/work-service";
 import type { WorkEntry } from "../entities/work/types";
 
 function firestoreDeleteErrorMessage(e: unknown): string {
@@ -59,7 +59,11 @@ export function AdminScreen() {
     setError(null);
     setLoading(true);
     try {
-      const [cats, allWorks, allPayouts] = await Promise.all([listCategories(), listAllWorkEntries(), listAllSalaryPayouts()]);
+      const [cats, allWorks, allPayouts] = await Promise.all([
+        listCategories(),
+        listWorkEntriesForViewer({ uid: user.uid, role: "admin" }),
+        listSalaryPayoutsForViewer({ uid: user.uid, role: "admin" }),
+      ]);
       setCategories(cats);
       setWorks(allWorks);
       setPayouts(allPayouts);
