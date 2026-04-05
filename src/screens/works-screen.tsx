@@ -258,31 +258,35 @@ export function WorksScreen() {
         <View style={styles.center}>
           <ActivityIndicator />
         </View>
-      ) : error ? (
-        <View style={styles.center}>
-          <Text style={styles.error}>{error}</Text>
-          <Pressable style={styles.secondaryButton} onPress={() => loadAll()}>
-            <Text style={styles.secondaryButtonText}>Спробувати ще</Text>
-          </Pressable>
-        </View>
       ) : (
+        <>
+          <View style={styles.searchBar}>
+            <TextInput
+              style={styles.input}
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+              placeholder={
+                user?.role === "admin"
+                  ? "Пошук (опис/дата/категорія/email)"
+                  : "Пошук (опис/дата/категорія)"
+              }
+            />
+          </View>
+          {error ? (
+            <View style={styles.center}>
+              <Text style={styles.error}>{error}</Text>
+              <Pressable style={styles.secondaryButton} onPress={() => loadAll()}>
+                <Text style={styles.secondaryButtonText}>Спробувати ще</Text>
+              </Pressable>
+            </View>
+          ) : (
         <FlatList
+          style={styles.listFlex}
           data={paginatedItems}
           keyExtractor={(item) => item.id}
           contentContainerStyle={paginatedItems.length ? undefined : styles.emptyContainer}
           ListHeaderComponent={
             <View style={styles.filters}>
-              <TextInput
-                style={styles.input}
-                value={searchTerm}
-                onChangeText={setSearchTerm}
-                placeholder={
-                  user?.role === "admin"
-                    ? "Пошук (опис/дата/категорія/email)"
-                    : "Пошук (опис/дата/категорія)"
-                }
-              />
-
               <View style={styles.row}>
                 <Pressable
                   style={[styles.picker, styles.rowGrow]}
@@ -477,6 +481,8 @@ export function WorksScreen() {
             );
           }}
         />
+          )}
+        </>
       )}
 
       <Modal visible={createOpen} animationType="slide" onRequestClose={() => setCreateOpen(false)}>
@@ -950,6 +956,8 @@ const styles = StyleSheet.create({
   sheetRow: { paddingVertical: 12, paddingHorizontal: 10, borderRadius: 10 },
   sheetRowActive: { backgroundColor: "#eef2ff" },
   sheetRowText: { fontWeight: "700", color: "#0b1220" },
+  searchBar: { marginBottom: 4 },
+  listFlex: { flex: 1 },
   filters: { gap: 10, marginBottom: 12 },
   row: { flexDirection: "row", gap: 10, alignItems: "center" },
   rowGrow: { flex: 1 },
