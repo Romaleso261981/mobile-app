@@ -36,6 +36,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           return;
         }
+        const db = getFirebaseDb();
+        await setDoc(doc(db, "users", firebaseUser.uid), { email: firebaseUser.email }, { merge: true });
         const role = await resolveRole(firebaseUser);
         setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role });
       } finally {
@@ -62,7 +64,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const cred = await createUserWithEmailAndPassword(getFirebaseAuth(), email, password);
           const db = getFirebaseDb();
-          await setDoc(doc(db, "users", cred.user.uid), { role: "employee" });
+          await setDoc(doc(db, "users", cred.user.uid), {
+            role: "employee",
+            email: cred.user.email ?? email,
+          });
         } finally {
           setLoading(false);
         }

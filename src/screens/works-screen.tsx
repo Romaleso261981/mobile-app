@@ -42,6 +42,9 @@ export function WorksScreen() {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [filterCategoryId, setFilterCategoryId] = useState<string>("");
+  /** Лише admin: обмежити список робіт одним userId; "" = усі. */
+  const [filterEmployeeId, setFilterEmployeeId] = useState<string>("");
+  const [employeeFilterPickerOpen, setEmployeeFilterPickerOpen] = useState(false);
   const [formCategoryId, setFormCategoryId] = useState<string>("");
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   /** Фільтр / нова робота / редагування — одна модалка списку категорій. */
@@ -57,17 +60,37 @@ export function WorksScreen() {
   const selectedCategory = useMemo(() => categories.find((c) => c.id === formCategoryId) ?? null, [categories, formCategoryId]);
   const selectedEditCategory = useMemo(() => categories.find((c) => c.id === editCategoryId) ?? null, [categories, editCategoryId]);
 
+  /** Унікальні працівники з завантажених робіт (для фільтра admin). */
+  const employeeFilterOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const w of items) {
+      if (!map.has(w.userId)) map.set(w.userId, w.userEmail);
+    }
+    return Array.from(map, ([userId, email]) => ({ userId, email })).sort((a, b) =>
+      a.email.localeCompare(b.email, "uk"),
+    );
+  }, [items]);
+
+  const employeeFilterListData = useMemo(
+    () => [{ userId: "", email: "Усі працівники" }, ...employeeFilterOptions],
+    [employeeFilterOptions],
+  );
+
   const filteredItems = useMemo(() => {
     const s = searchTerm.trim().toLowerCase();
     return items.filter((item) => {
       const matchesSearch = !s
         ? true
-        : item.description.toLowerCase().includes(s) || item.workDate.includes(s) || item.categoryName.toLowerCase().includes(s);
+        : item.description.toLowerCase().includes(s) ||
+          item.workDate.includes(s) ||
+          item.categoryName.toLowerCase().includes(s) ||
+          item.userEmail.toLowerCase().includes(s);
       const matchesCategory = filterCategoryId ? item.categoryId === filterCategoryId : true;
+      const matchesEmployee = filterEmployeeId ? item.userId === filterEmployeeId : true;
       const matchesDate = matchesDateString(item.workDate, datePreset, dateYear, dateMonth, dateFrom, dateTo);
-      return matchesSearch && matchesCategory && matchesDate;
+      return matchesSearch && matchesCategory && matchesEmployee && matchesDate;
     });
-  }, [dateFrom, dateMonth, datePreset, dateTo, dateYear, filterCategoryId, items, searchTerm]);
+  }, [dateFrom, dateMonth, datePreset, dateTo, dateYear, filterCategoryId, filterEmployeeId, items, searchTerm]);
 
   const filteredTotal = useMemo(() => filteredItems.reduce((acc, item) => acc + (item.amount ?? 0), 0), [filteredItems]);
   const pageCount = useMemo(() => Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE)), [filteredItems.length]);
@@ -78,7 +101,7 @@ export function WorksScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, datePreset, dateYear, dateMonth, dateFrom, dateTo, filterCategoryId]);
+  }, [searchTerm, datePreset, dateYear, dateMonth, dateFrom, dateTo, filterCategoryId, filterEmployeeId]);
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
@@ -104,6 +127,10 @@ export function WorksScreen() {
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.role]);
+
+  useEffect(() => {
+    if (user?.role !== "admin") setFilterEmployeeId("");
+  }, [user?.role]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -148,7 +175,11 @@ export function WorksScreen() {
                 style={styles.input}
                 value={searchTerm}
                 onChangeText={setSearchTerm}
-                placeholder="Пошук (опис/дата/категорія)"
+                placeholder={
+                  user?.role === "admin"
+                    ? "Пошук (опис/дата/категорія/email)"
+                    : "Пошук (опис/дата/категорія)"
+                }
               />
 
               <View style={styles.row}>
@@ -172,6 +203,19 @@ export function WorksScreen() {
                   </Text>
                 </Pressable>
               </View>
+
+              {user?.role === "admin" ? (
+                <Pressable
+                  style={styles.picker}
+                  onPress={() => setEmployeeFilterPickerOpen(true)}
+                >
+                  <Text style={styles.pickerText}>
+                    {filterEmployeeId
+                      ? employeeFilterOptions.find((e) => e.userId === filterEmployeeId)?.email ?? "Працівник"
+                      : "Усі працівники"}
+                  </Text>
+                </Pressable>
+              ) : null}
 
               {datePreset === "year" ? (
                 <TextInput style={styles.input} value={dateYear} onChangeText={setDateYear} placeholder="Рік (YYYY)" keyboardType="number-pad" />
@@ -468,6 +512,29 @@ export function WorksScreen() {
                   </Pressable>
                 );
               }}
+            />
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={employeeFilterPickerOpen} transparent animationType="fade" onRequestClose={() => setEmployeeFilterPickerOpen(false)}>
+        <Pressable style={styles.overlay} onPress={() => setEmployeeFilterPickerOpen(false)}>
+          <View style={styles.sheet}>
+            <Text style={styles.sheetTitle}>Фільтр: працівник</Text>
+            <FlatList
+              data={employeeFilterListData}
+              keyExtractor={(item) => item.userId || "all"}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={[styles.sheetRow, item.userId === filterEmployeeId ? styles.sheetRowActive : null]}
+                  onPress={() => {
+                    setFilterEmployeeId(item.userId);
+                    setEmployeeFilterPickerOpen(false);
+                  }}
+                >
+                  <Text style={styles.sheetRowText}>{item.email}</Text>
+                </Pressable>
+              )}
             />
           </View>
         </Pressable>
