@@ -12,6 +12,7 @@ import {
 } from "../entities/payout/payout-service";
 import { getRequestAuthUid } from "../lib/request-auth";
 import type { SalaryPayout } from "../entities/payout/types";
+import { listUsersForAdmin, type UserListItem } from "../entities/user/user-service";
 import { firestoreActionError } from "../shared/firestore-errors";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
 
@@ -50,6 +51,8 @@ export function ExpensesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<SalaryPayout[]>([]);
+  const [employees, setEmployees] = useState<UserListItem[]>([]);
+  const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
 
   const [datePreset, setDatePreset] = useState<DateFilterPreset>("all");
   const [dateYear, setDateYear] = useState(() => String(new Date().getFullYear()));
@@ -72,8 +75,20 @@ export function ExpensesScreen() {
   const [payoutDate, setPayoutDate] = useState(today);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
+  const [assigneeId, setAssigneeId] = useState<string>("");
+  const [assigneeEmail, setAssigneeEmail] = useState<string>("");
 
   function openCreatePayout() {
+    if (user?.role === "admin") {
+      setAssigneeId(user.uid);
+      setAssigneeEmail(user.email);
+    } else if (user) {
+      setAssigneeId(user.uid);
+      setAssigneeEmail(user.email);
+    } else {
+      setAssigneeId("");
+      setAssigneeEmail("");
+    }
     setEditingPayoutId(null);
     setPayoutDate(today);
     setDescription("");
@@ -92,7 +107,42 @@ export function ExpensesScreen() {
   function closePayoutModal() {
     setPayoutModal("none");
     setEditingPayoutId(null);
+    setEmployeePickerOpen(false);
   }
+
+  const employeeListData = useMemo(() => {
+    if (!user || user.role !== "admin") return [];
+    const byUid = new Map<string, UserListItem>();
+    // 1) користувачі з users/*
+    for (const e of employees) {
+      if (!e.uid) continue;
+      byUid.set(e.uid, { uid: e.uid, email: e.email ?? "", role: e.role });
+    }
+    // 2) fallback із уже завантажених витрат (щоб список не був порожній)
+    for (const item of items) {
+      if (!item.userId) continue;
+      const prev = byUid.get(item.userId);
+      if (!prev || !prev.email) {
+        byUid.set(item.userId, { uid: item.userId, email: item.userEmail ?? "", role: prev?.role });
+      }
+    }
+    // 3) поточний admin завжди доступний як мінімум
+    byUid.set(user.uid, { uid: user.uid, email: user.email, role: "admin" });
+    return Array.from(byUid.values()).sort((a, b) => {
+      const aLabel = a.email || a.uid;
+      const bLabel = b.email || b.uid;
+      return aLabel.localeCompare(bLabel, "uk");
+    });
+  }, [employees, items, user]);
+
+  const selectedAssigneeLabel = useMemo(() => {
+    if (!user) return "Працівник";
+    if (user.role !== "admin") return user.email;
+    if (assigneeId && assigneeEmail) return assigneeEmail;
+    const fromList = employeeListData.find((e) => e.uid === assigneeId);
+    if (!fromList) return "Працівник";
+    return fromList.email || fromList.uid;
+  }, [assigneeEmail, assigneeId, employeeListData, user]);
 
   const yearPickerYears = useMemo(() => {
     const cy = new Date().getFullYear();
@@ -202,6 +252,16 @@ export function ExpensesScreen() {
       const rows = await listSalaryPayoutsForViewer({ uid: user.uid, role: user.role });
       if (getRequestAuthUid() !== expectedUid) return;
       setItems(rows);
+      if (user.role === "admin") {
+        try {
+          const users = await listUsersForAdmin();
+          if (getRequestAuthUid() !== expectedUid) return;
+          setEmployees(users);
+        } catch {
+          // Не блокуємо завантаження витрат, якщо список працівників недоступний.
+          setEmployees([]);
+        }
+      }
     } catch {
       setError("Не вдалося завантажити виплати.");
     } finally {
@@ -212,10 +272,14 @@ export function ExpensesScreen() {
   useEffect(() => {
     if (!user) {
       setItems([]);
+      setEmployees([]);
+      setAssigneeId("");
+      setAssigneeEmail("");
       setError(null);
       return;
     }
     setItems([]);
+    setEmployees([]);
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.role]);
@@ -556,6 +620,15 @@ export function ExpensesScreen() {
         <View style={styles.modalContainer}>
           <Text style={styles.modalTitle}>{payoutModal === "edit" ? "Редагувати виплату" : "Нова виплата"}</Text>
 
+          {user?.role === "admin" && payoutModal === "create" ? (
+            <>
+              <Text style={styles.label}>Працівник</Text>
+              <Pressable style={styles.picker} onPress={() => setEmployeePickerOpen(true)}>
+                <Text style={styles.pickerText}>{selectedAssigneeLabel}</Text>
+              </Pressable>
+            </>
+          ) : null}
+
           <Text style={styles.label}>Дата (YYYY-MM-DD)</Text>
           <TextInput style={styles.input} value={payoutDate} onChangeText={setPayoutDate} placeholder="2026-04-02" autoCapitalize="none" />
 
@@ -573,14 +646,20 @@ export function ExpensesScreen() {
               style={[styles.secondaryButton, styles.modalActionButton]}
               onPress={async () => {
                 if (!user) return;
+                const targetUserId = user.role === "admin" ? assigneeId || user.uid : user.uid;
+                const fromList = employeeListData.find((e) => e.uid === targetUserId);
+                const targetUserEmail =
+                  user.role === "admin"
+                    ? assigneeEmail || fromList?.email || user.email
+                    : user.email;
                 setLoading(true);
                 try {
                   const parsed = Number(amount.replace(",", "."));
                   if (!Number.isFinite(parsed)) throw new Error("invalid amount");
                   if (payoutModal === "create") {
                     await createSalaryPayout({
-                      userId: user.uid,
-                      userEmail: user.email,
+                      userId: targetUserId,
+                      userEmail: targetUserEmail,
                       payoutDate: payoutDate.trim(),
                       description: description.trim(),
                       amount: parsed,
@@ -607,6 +686,33 @@ export function ExpensesScreen() {
             </Pressable>
           </View>
         </View>
+      </Modal>
+
+      <Modal visible={employeePickerOpen} transparent animationType="fade" onRequestClose={() => setEmployeePickerOpen(false)}>
+        <Pressable style={styles.overlay} onPress={() => setEmployeePickerOpen(false)}>
+          <View style={styles.sheet}>
+            <Text style={styles.sheetTitle}>Оберіть працівника</Text>
+            <FlatList
+              data={employeeListData}
+              keyExtractor={(item) => item.uid}
+              renderItem={({ item }) => {
+                const active = item.uid === assigneeId;
+                return (
+                  <Pressable
+                    style={[styles.sheetRow, active ? styles.sheetRowActive : null]}
+                    onPress={() => {
+                      setAssigneeId(item.uid);
+                      setAssigneeEmail(item.email);
+                      setEmployeePickerOpen(false);
+                    }}
+                  >
+                    <Text style={styles.sheetRowText}>{item.email || item.uid}</Text>
+                  </Pressable>
+                );
+              }}
+            />
+          </View>
+        </Pressable>
       </Modal>
       </View>
     </SafeAreaView>
@@ -663,6 +769,16 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: "800", marginBottom: 6 },
   label: { color: "#5b6475", fontWeight: "700" },
   input: { borderWidth: 1, borderColor: "#dbe1ef", borderRadius: 12, padding: 12, backgroundColor: "#fff" },
+  picker: {
+    borderWidth: 1,
+    borderColor: "#dbe1ef",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+  },
+  pickerText: { color: "#3158f5", fontWeight: "800" },
   inputWithIconRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   inputInRow: { flex: 1, minWidth: 0 },
   calendarIconButton: {
