@@ -425,7 +425,7 @@ export function WorksScreen() {
             ) : null
           }
           renderItem={({ item }) => {
-            const canModify = user && (item.userId === user.uid || user.role === "admin");
+            const canModify = user?.role === "admin";
             return (
               <View style={styles.card}>
                 <View style={styles.cardTop}>

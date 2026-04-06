@@ -79,16 +79,9 @@ export function ExpensesScreen() {
   const [assigneeEmail, setAssigneeEmail] = useState<string>("");
 
   function openCreatePayout() {
-    if (user?.role === "admin") {
-      setAssigneeId(user.uid);
-      setAssigneeEmail(user.email);
-    } else if (user) {
-      setAssigneeId(user.uid);
-      setAssigneeEmail(user.email);
-    } else {
-      setAssigneeId("");
-      setAssigneeEmail("");
-    }
+    if (!user || user.role !== "admin") return;
+    setAssigneeId(user.uid);
+    setAssigneeEmail(user.email);
     setEditingPayoutId(null);
     setPayoutDate(today);
     setDescription("");
@@ -292,12 +285,14 @@ export function ExpensesScreen() {
           <View style={styles.headerLeft}>
             <Text style={styles.title}>Витрати</Text>
           </View>
-          <Pressable style={styles.secondaryButton} onPress={openCreatePayout}>
-            <View style={styles.buttonContentRow}>
-              <Ionicons name="add-circle-outline" size={18} color="#3158f5" />
-              <Text style={styles.secondaryButtonText}>Додати</Text>
-            </View>
-          </Pressable>
+          {user?.role === "admin" ? (
+            <Pressable style={styles.secondaryButton} onPress={openCreatePayout}>
+              <View style={styles.buttonContentRow}>
+                <Ionicons name="add-circle-outline" size={18} color="#3158f5" />
+                <Text style={styles.secondaryButtonText}>Додати</Text>
+              </View>
+            </Pressable>
+          ) : null}
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.meta} numberOfLines={1}>{user?.email}</Text>
@@ -413,7 +408,13 @@ export function ExpensesScreen() {
             }
           }}
           refreshing={refreshing}
-          ListEmptyComponent={<Text style={styles.emptyText}>Поки що немає виплат. Натисни “Додати”.</Text>}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>
+              {user?.role === "admin"
+                ? "Поки що немає виплат. Натисни “Додати”."
+                : "Поки що немає виплат."}
+            </Text>
+          }
           ListFooterComponent={
             filteredItems.length ? (
               <View style={styles.pagination}>
@@ -434,7 +435,7 @@ export function ExpensesScreen() {
             ) : null
           }
           renderItem={({ item }) => {
-            const canModify = user && (item.userId === user.uid || user.role === "admin");
+            const canModify = user?.role === "admin";
             return (
               <View style={styles.card}>
                 <View style={styles.cardTop}>

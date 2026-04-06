@@ -26,14 +26,15 @@ service cloud.firestore {
     match /workEntries/{entryId} {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      // Редагування / видалення лише для admin (працівник лише додає свої записи).
+      allow update, delete: if isSignedIn() && isAdmin();
     }
 
     match /salaryPayouts/{payoutId} {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && (isAdmin() || request.resource.data.userId == request.auth.uid);
-      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      // Витрати (виплати) додає лише admin; працівник веде лише роботи.
+      allow create: if isSignedIn() && isAdmin();
+      allow update, delete: if isSignedIn() && isAdmin();
     }
   }
 }
