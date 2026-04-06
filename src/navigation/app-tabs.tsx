@@ -18,6 +18,7 @@ export function AppTabs() {
   const { user } = useAuth();
   return (
     <Tab.Navigator
+      key={user?.uid ?? "none"}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: "#3158f5",

@@ -37,9 +37,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         const db = getFirebaseDb();
-        await setDoc(doc(db, "users", firebaseUser.uid), { email: firebaseUser.email }, { merge: true });
-        const role = await resolveRole(firebaseUser);
-        setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role });
+        try {
+          await setDoc(doc(db, "users", firebaseUser.uid), { email: firebaseUser.email }, { merge: true });
+          const role = await resolveRole(firebaseUser);
+          setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role });
+        } catch {
+          // Якщо Firestore недоступний або відмовляє в правилах — не залишаємо сесію Auth «живою»
+          // без user у React (інакше мобільний вхід здається зламаним, тоді як веб без цього кроку працює).
+          setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role: "employee" });
+        }
       } finally {
         setLoading(false);
       }
@@ -55,8 +61,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(true);
         try {
           await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
-        } finally {
+          // Не викликати setLoading(false) тут: onAuthStateChanged ще асинхронно
+          // підтягує роль з Firestore. Інакше коротко буде loading=false і user=null —
+          // навігація покаже екран входу замість застосунку.
+        } catch (e) {
           setLoading(false);
+          throw e;
         }
       },
       register: async (email, password) => {
@@ -68,9 +78,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role: "employee",
             email: cred.user.email ?? email,
           });
-        } finally {
+        } catch (e) {
           setLoading(false);
+          throw e;
         }
+        // setLoading(false) після успіху — у onAuthStateChanged
       },
       logout: async () => {
         await signOut(getFirebaseAuth());
