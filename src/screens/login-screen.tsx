@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, View, Text, TextInput, Pressable, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/auth-context";
@@ -17,8 +17,18 @@ export function LoginScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.container}>
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+      >
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.form}>
         <Text style={styles.title}>Вхід</Text>
         <TextInput
           style={styles.input}
@@ -73,14 +83,24 @@ export function LoginScreen({ navigation }: Props) {
         <Pressable onPress={() => navigation.navigate("AuthRegister")}>
           <Text style={styles.link}>Немає акаунта? Реєстрація</Text>
         </Pressable>
-      </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#fff" },
-  container: { flex: 1, padding: 16, gap: 12, justifyContent: "center", backgroundColor: "#fff" },
+  flex: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 32,
+    justifyContent: "center",
+  },
+  form: { gap: 12 },
   title: { fontSize: 22, fontWeight: "700", textAlign: "center", marginBottom: 8 },
   input: { borderWidth: 1, borderColor: "#dbe1ef", borderRadius: 10, padding: 12, backgroundColor: "#fff" },
   passwordRow: {
