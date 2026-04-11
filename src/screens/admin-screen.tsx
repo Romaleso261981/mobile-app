@@ -9,6 +9,7 @@ import { deleteSalaryPayoutAdmin, listSalaryPayoutsForViewer } from "../entities
 import type { SalaryPayout } from "../entities/payout/types";
 import { deleteWorkEntryAdmin, listWorkEntriesForViewer, updateWorkEntryAdmin } from "../entities/work/work-service";
 import type { WorkEntry } from "../entities/work/types";
+import { DateInputWithCalendar } from "../components/date-input-with-calendar";
 
 function firestoreDeleteErrorMessage(e: unknown): string {
   const code = e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : "";
@@ -39,6 +40,7 @@ export function AdminScreen() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [editWorkId, setEditWorkId] = useState<string | null>(null);
+  const [editWorkDate, setEditWorkDate] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editAmount, setEditAmount] = useState("");
 
@@ -166,6 +168,7 @@ export function AdminScreen() {
                         style={styles.editButton}
                         onPress={() => {
                           setEditWorkId(item.id);
+                          setEditWorkDate(item.workDate);
                           setEditDescription(item.description);
                           setEditAmount(String(item.amount ?? 0));
                           setEditOpen(true);
@@ -360,7 +363,10 @@ export function AdminScreen() {
       <Modal visible={editOpen} animationType="slide" onRequestClose={() => setEditOpen(false)}>
         <View style={styles.modalContainer}>
           <Text style={styles.modalTitle}>Редагувати роботу</Text>
-          <Text style={styles.meta}>{selectedWork ? `${selectedWork.userEmail} • ${selectedWork.workDate}` : ""}</Text>
+          <Text style={styles.meta}>{selectedWork ? selectedWork.userEmail : ""}</Text>
+
+          <Text style={styles.label}>Дата (YYYY-MM-DD)</Text>
+          <DateInputWithCalendar value={editWorkDate} onDateChange={setEditWorkDate} placeholder="2026-04-11" inputStyle={styles.input} />
 
           <Text style={styles.label}>Опис</Text>
           <TextInput style={[styles.input, styles.textarea]} value={editDescription} onChangeText={setEditDescription} multiline />
@@ -380,7 +386,11 @@ export function AdminScreen() {
                 try {
                   const parsed = Number(editAmount.replace(",", "."));
                   if (!Number.isFinite(parsed)) throw new Error("invalid amount");
-                  await updateWorkEntryAdmin(editWorkId, { amount: parsed, description: editDescription.trim() });
+                  await updateWorkEntryAdmin(editWorkId, {
+                    workDate: editWorkDate.trim(),
+                    amount: parsed,
+                    description: editDescription.trim(),
+                  });
                   setEditOpen(false);
                   await loadAll();
                 } catch {

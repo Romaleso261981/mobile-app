@@ -16,6 +16,7 @@ import { getRequestAuthUid } from "../lib/request-auth";
 import type { WorkEntry } from "../entities/work/types";
 import { firestoreActionError } from "../shared/firestore-errors";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
+import { DateInputWithCalendar } from "../components/date-input-with-calendar";
 
 /** Локальна дата YYYY-MM-DD без зсуву через UTC. */
 function formatLocalYMD(d: Date): string {
@@ -495,7 +496,7 @@ export function WorksScreen() {
           <Text style={styles.modalTitle}>Нова робота</Text>
 
           <Text style={styles.label}>Дата (YYYY-MM-DD)</Text>
-          <TextInput style={styles.input} value={workDate} onChangeText={setWorkDate} placeholder="2026-04-02" autoCapitalize="none" />
+          <DateInputWithCalendar value={workDate} onDateChange={setWorkDate} placeholder="2026-04-02" />
 
           <Text style={styles.label}>Категорія</Text>
           <Pressable
@@ -561,7 +562,7 @@ export function WorksScreen() {
           <Text style={styles.modalTitle}>Редагувати роботу</Text>
 
           <Text style={styles.label}>Дата (YYYY-MM-DD)</Text>
-          <TextInput style={styles.input} value={editWorkDate} onChangeText={setEditWorkDate} placeholder="2026-04-02" autoCapitalize="none" />
+          <DateInputWithCalendar value={editWorkDate} onDateChange={setEditWorkDate} placeholder="2026-04-02" />
 
           <Text style={styles.label}>Категорія</Text>
           <Pressable

@@ -15,6 +15,7 @@ import type { SalaryPayout } from "../entities/payout/types";
 import { listUsersForAdmin, type UserListItem } from "../entities/user/user-service";
 import { firestoreActionError } from "../shared/firestore-errors";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
+import { DateInputWithCalendar } from "../components/date-input-with-calendar";
 
 /** Локальна дата YYYY-MM-DD без зсуву через UTC. */
 function formatLocalYMD(d: Date): string {
@@ -631,7 +632,7 @@ export function ExpensesScreen() {
           ) : null}
 
           <Text style={styles.label}>Дата (YYYY-MM-DD)</Text>
-          <TextInput style={styles.input} value={payoutDate} onChangeText={setPayoutDate} placeholder="2026-04-02" autoCapitalize="none" />
+          <DateInputWithCalendar value={payoutDate} onDateChange={setPayoutDate} placeholder="2026-04-02" inputStyle={styles.input} />
 
           <Text style={styles.label}>Опис</Text>
           <TextInput style={[styles.input, styles.textarea]} value={description} onChangeText={setDescription} placeholder="За що виплата?" multiline />
