@@ -29,6 +29,31 @@ function formatLocalYMD(d: Date): string {
   return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+function isValidWorkDateYMD(s: string): boolean {
+  const t = s.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return false;
+  const [yy, mm, dd] = t.split("-").map(Number);
+  const d = new Date(yy, mm - 1, dd);
+  return !Number.isNaN(d.getTime()) && d.getFullYear() === yy && d.getMonth() === mm - 1 && d.getDate() === dd;
+}
+
+function validateCreateWorkForm(
+  workDate: string,
+  formCategoryId: string,
+  description: string,
+  categories: Category[],
+): string | null {
+  const missing: string[] = [];
+  if (!isValidWorkDateYMD(workDate)) missing.push("дату");
+  const hasCategory = Boolean(formCategoryId.trim()) && categories.some((c) => c.id === formCategoryId);
+  if (!hasCategory) missing.push("категорію");
+  if (!description.trim()) missing.push("опис");
+  if (missing.length === 0) return null;
+  if (missing.length === 1) return `Вкажіть ${missing[0]}.`;
+  if (missing.length === 2) return `Вкажіть ${missing[0]} та ${missing[1]}.`;
+  return `Вкажіть ${missing[0]}, ${missing[1]} та ${missing[2]}.`;
+}
+
 /** Лише для фільтра «Період»: нативний календар обирає день. Рік/місяць — окремі списки. */
 type RangeDateTarget = "from" | "to";
 
@@ -78,6 +103,7 @@ export function WorksScreen() {
   const [page, setPage] = useState(1);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [createModalError, setCreateModalError] = useState<string | null>(null);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [workDate, setWorkDate] = useState(today);
   const [description, setDescription] = useState("");
@@ -231,6 +257,10 @@ export function WorksScreen() {
     if (user?.role !== "admin") setFilterEmployeeId("");
   }, [user?.role]);
 
+  useEffect(() => {
+    if (createOpen) setCreateModalError(null);
+  }, [workDate, description, formCategoryId, createOpen]);
+
   const applyRangePickedDate = useCallback((date: Date, target: RangeDateTarget) => {
     if (target === "from") setDateFrom(formatLocalYMD(date));
     else setDateTo(formatLocalYMD(date));
@@ -297,7 +327,13 @@ export function WorksScreen() {
           <View style={styles.headerLeft}>
             <Text style={styles.title}>Роботи</Text>
           </View>
-          <Pressable style={styles.secondaryButton} onPress={() => setCreateOpen(true)}>
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => {
+              setCreateModalError(null);
+              setCreateOpen(true);
+            }}
+          >
             <View style={styles.buttonContentRow}>
               <Ionicons name="add-circle-outline" size={18} color="#3158f5" />
               <Text style={styles.secondaryButtonText}>Додати</Text>
@@ -537,7 +573,14 @@ export function WorksScreen() {
         />
       )}
 
-      <Modal visible={createOpen} animationType="slide" onRequestClose={() => setCreateOpen(false)}>
+      <Modal
+        visible={createOpen}
+        animationType="slide"
+        onRequestClose={() => {
+          setCreateModalError(null);
+          setCreateOpen(false);
+        }}
+      >
         <View style={styles.modalContainer}>
           <Text style={styles.modalTitle}>Нова робота</Text>
 
@@ -558,25 +601,48 @@ export function WorksScreen() {
           <Text style={styles.label}>Опис</Text>
           <TextInput style={[styles.input, styles.textarea]} value={description} onChangeText={setDescription} placeholder="Що зроблено?" multiline />
 
-          <Text style={styles.label}>Сума (грн, необов’язково)</Text>
-          <TextInput style={styles.input} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="0" />
+          {user?.role === "admin" ? (
+            <>
+              <Text style={styles.label}>Сума (грн, необов’язково)</Text>
+              <TextInput style={styles.input} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="0" />
+            </>
+          ) : (
+            <Text style={styles.hintMuted}>Суму нарахування встановлює адміністратор.</Text>
+          )}
+
+          {createModalError ? <Text style={styles.modalFormError}>{createModalError}</Text> : null}
 
           <View style={styles.modalActions}>
-            <Pressable style={[styles.secondaryButton, styles.modalActionButton]} onPress={() => setCreateOpen(false)}>
+            <Pressable
+              style={[styles.secondaryButton, styles.modalActionButton]}
+              onPress={() => {
+                setCreateModalError(null);
+                setCreateOpen(false);
+              }}
+            >
               <Text style={styles.secondaryButtonText}>Скасувати</Text>
             </Pressable>
             <Pressable
-              style={[styles.secondaryButton, styles.modalActionButton]}
+              style={[styles.secondaryButton, styles.modalActionButton, loading ? styles.disabledButton : null]}
+              disabled={loading}
               onPress={async () => {
                 if (!user) return;
+                const validationError = validateCreateWorkForm(workDate, formCategoryId, description, categories);
+                if (validationError) {
+                  setCreateModalError(validationError);
+                  return;
+                }
                 const category = categories.find((c) => c.id === formCategoryId);
                 if (!category) {
-                  setError("Категорію не знайдено.");
-                  setCreateOpen(false);
+                  setCreateModalError("Оберіть категорію зі списку.");
                   return;
                 }
                 setLoading(true);
                 try {
+                  const amountPayload =
+                    user.role === "admin" && amount.trim()
+                      ? Number(amount.replace(",", "."))
+                      : undefined;
                   await createWorkEntry({
                     userId: user.uid,
                     userEmail: user.email,
@@ -584,8 +650,9 @@ export function WorksScreen() {
                     description: description.trim(),
                     categoryId: category.id,
                     categoryName: category.name,
-                    amount: amount.trim() ? Number(amount.replace(",", ".")) : undefined,
+                    amount: amountPayload,
                   });
+                  setCreateModalError(null);
                   setCreateOpen(false);
                   setDescription("");
                   setAmount("");
@@ -928,7 +995,9 @@ const styles = StyleSheet.create({
   secondaryButtonDangerText: { color: "#b42318", fontWeight: "800" },
   modalContainer: { flex: 1, padding: 16, gap: 10, backgroundColor: "#fff" },
   modalTitle: { fontSize: 20, fontWeight: "800", marginBottom: 6 },
+  modalFormError: { color: "#ce2e2e", fontWeight: "700", fontSize: 14, textAlign: "center", marginTop: 4 },
   label: { color: "#5b6475", fontWeight: "700" },
+  hintMuted: { color: "#64748b", fontSize: 13, lineHeight: 18 },
   input: { borderWidth: 1, borderColor: "#dbe1ef", borderRadius: 12, padding: 12, backgroundColor: "#fff" },
   inputWithIconRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   inputInRow: { flex: 1, minWidth: 0 },
