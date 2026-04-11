@@ -17,7 +17,7 @@ import type { SalaryPayout } from "../entities/payout/types";
 import { getRequestAuthUid } from "../lib/request-auth";
 import type { WorkEntry } from "../entities/work/types";
 import { firestoreActionError } from "../shared/firestore-errors";
-import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
+import { dateFilterSummaryLabel, matchesDateString, type DateFilterPreset } from "../shared/date-filter";
 import { DateInputWithCalendar } from "../components/date-input-with-calendar";
 import { EmployeeBalanceCard } from "../components/employee-balance-card";
 
@@ -137,10 +137,16 @@ export function WorksScreen() {
 
   const employeeBalance = useMemo(() => {
     if (user?.role !== "employee") return null;
-    const earned = items.reduce((s, i) => s + (i.amount ?? 0), 0);
-    const paidOut = employeePayouts.reduce((s, p) => s + (p.amount ?? 0), 0);
-    return { earned, paidOut };
-  }, [user?.role, items, employeePayouts]);
+    const earned = filteredItems.reduce((s, i) => s + (i.amount ?? 0), 0);
+    const paidOut = employeePayouts
+      .filter((p) => matchesDateString(p.payoutDate, datePreset, dateYear, dateMonth, dateFrom, dateTo))
+      .reduce((s, p) => s + (p.amount ?? 0), 0);
+    return {
+      earned,
+      paidOut,
+      periodLabel: dateFilterSummaryLabel(datePreset, dateYear, dateMonth, dateFrom, dateTo),
+    };
+  }, [user?.role, filteredItems, employeePayouts, datePreset, dateYear, dateMonth, dateFrom, dateTo]);
   const pageCount = useMemo(() => Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE)), [filteredItems.length]);
   const paginatedItems = useMemo(() => {
     const from = (page - 1) * PAGE_SIZE;
@@ -329,7 +335,11 @@ export function WorksScreen() {
           ListHeaderComponent={
             <View style={styles.filters}>
               {employeeBalance ? (
-                <EmployeeBalanceCard earned={employeeBalance.earned} paidOut={employeeBalance.paidOut} />
+                <EmployeeBalanceCard
+                  earned={employeeBalance.earned}
+                  paidOut={employeeBalance.paidOut}
+                  periodLabel={employeeBalance.periodLabel}
+                />
               ) : null}
               <View style={styles.row}>
                 <Pressable

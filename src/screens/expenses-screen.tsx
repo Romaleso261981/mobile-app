@@ -15,7 +15,8 @@ import { getRequestAuthUid } from "../lib/request-auth";
 import type { SalaryPayout } from "../entities/payout/types";
 import { listUsersForAdmin, type UserListItem } from "../entities/user/user-service";
 import { firestoreActionError } from "../shared/firestore-errors";
-import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
+import { dateFilterSummaryLabel, matchesDateString, type DateFilterPreset } from "../shared/date-filter";
+import type { WorkEntry } from "../entities/work/types";
 import { DateInputWithCalendar } from "../components/date-input-with-calendar";
 import { EmployeeBalanceCard } from "../components/employee-balance-card";
 
@@ -56,8 +57,8 @@ export function ExpensesScreen() {
   const [items, setItems] = useState<SalaryPayout[]>([]);
   const [employees, setEmployees] = useState<UserListItem[]>([]);
   const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
-  /** Лише employee: сума робіт для картки балансу. */
-  const [employeeEarnedTotal, setEmployeeEarnedTotal] = useState(0);
+  /** Лише employee: роботи для картки балансу (фільтр дат застосовується в useMemo). */
+  const [employeeWorks, setEmployeeWorks] = useState<WorkEntry[]>([]);
 
   const [datePreset, setDatePreset] = useState<DateFilterPreset>("all");
   const [dateYear, setDateYear] = useState(() => String(new Date().getFullYear()));
@@ -217,9 +218,16 @@ export function ExpensesScreen() {
 
   const employeeBalance = useMemo(() => {
     if (user?.role !== "employee") return null;
-    const paidOut = items.reduce((s, p) => s + (p.amount ?? 0), 0);
-    return { earned: employeeEarnedTotal, paidOut };
-  }, [user?.role, items, employeeEarnedTotal]);
+    const earned = employeeWorks
+      .filter((w) => matchesDateString(w.workDate, datePreset, dateYear, dateMonth, dateFrom, dateTo))
+      .reduce((s, w) => s + (w.amount ?? 0), 0);
+    const paidOut = filteredItems.reduce((s, p) => s + (p.amount ?? 0), 0);
+    return {
+      earned,
+      paidOut,
+      periodLabel: dateFilterSummaryLabel(datePreset, dateYear, dateMonth, dateFrom, dateTo),
+    };
+  }, [user?.role, employeeWorks, filteredItems, datePreset, dateYear, dateMonth, dateFrom, dateTo]);
   const pageCount = useMemo(() => Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE)), [filteredItems.length]);
   const paginatedItems = useMemo(() => {
     const from = (page - 1) * PAGE_SIZE;
@@ -245,7 +253,7 @@ export function ExpensesScreen() {
       if (role === "employee") {
         const works = await listWorkEntriesForViewer({ uid: expectedUid, role });
         if (getRequestAuthUid() !== expectedUid) return;
-        setEmployeeEarnedTotal(works.reduce((s, w) => s + (w.amount ?? 0), 0));
+        setEmployeeWorks(works);
       }
     } catch {
       setError("Не вдалося оновити список виплат.");
@@ -265,12 +273,12 @@ export function ExpensesScreen() {
         ]);
         if (getRequestAuthUid() !== expectedUid) return;
         setItems(rows);
-        setEmployeeEarnedTotal(works.reduce((s, w) => s + (w.amount ?? 0), 0));
+        setEmployeeWorks(works);
       } else {
         const rows = await listSalaryPayoutsForViewer({ uid: user.uid, role: user.role });
         if (getRequestAuthUid() !== expectedUid) return;
         setItems(rows);
-        setEmployeeEarnedTotal(0);
+        setEmployeeWorks([]);
         if (user.role === "admin") {
           try {
             const users = await listUsersForAdmin();
@@ -292,7 +300,7 @@ export function ExpensesScreen() {
     if (!user) {
       setItems([]);
       setEmployees([]);
-      setEmployeeEarnedTotal(0);
+      setEmployeeWorks([]);
       setAssigneeId("");
       setAssigneeEmail("");
       setError(null);
@@ -300,7 +308,7 @@ export function ExpensesScreen() {
     }
     setItems([]);
     setEmployees([]);
-    setEmployeeEarnedTotal(0);
+    setEmployeeWorks([]);
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.role]);
@@ -353,7 +361,11 @@ export function ExpensesScreen() {
           ListHeaderComponent={
             <View style={styles.filters}>
               {employeeBalance ? (
-                <EmployeeBalanceCard earned={employeeBalance.earned} paidOut={employeeBalance.paidOut} />
+                <EmployeeBalanceCard
+                  earned={employeeBalance.earned}
+                  paidOut={employeeBalance.paidOut}
+                  periodLabel={employeeBalance.periodLabel}
+                />
               ) : null}
               <Pressable
                 style={styles.secondaryButton}

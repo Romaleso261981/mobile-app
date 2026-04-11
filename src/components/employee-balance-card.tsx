@@ -4,14 +4,17 @@ import { StyleSheet, Text, View } from "react-native";
 type Props = {
   earned: number;
   paidOut: number;
+  /** Який період ураховано (узгоджено з фільтром дат). */
+  periodLabel: string;
 };
 
 /** Підсумок для працівника: зароблено за роботами, виплачено, залишок. */
-export function EmployeeBalanceCard({ earned, paidOut }: Props) {
+export function EmployeeBalanceCard({ earned, paidOut, periodLabel }: Props) {
   const balance = earned - paidOut;
   return (
     <View style={styles.wrap}>
       <Text style={styles.cardTitle}>Мій баланс</Text>
+      <Text style={styles.periodHint}>{periodLabel}</Text>
       <View style={styles.row}>
         <Text style={styles.label}>Зароблено (роботи)</Text>
         <Text style={styles.value}>{earned.toFixed(2)} грн</Text>
@@ -38,7 +41,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 8,
   },
-  cardTitle: { fontSize: 15, fontWeight: "800", color: "#1e3a8a", marginBottom: 4 },
+  cardTitle: { fontSize: 15, fontWeight: "800", color: "#1e3a8a", marginBottom: 2 },
+  periodHint: { fontSize: 13, fontWeight: "600", color: "#64748b", marginBottom: 8 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
   rowTotal: {
     marginTop: 4,
