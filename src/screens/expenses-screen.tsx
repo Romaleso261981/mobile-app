@@ -10,12 +10,14 @@ import {
   listSalaryPayoutsForViewer,
   updateSalaryPayout,
 } from "../entities/payout/payout-service";
+import { listWorkEntriesForViewer } from "../entities/work/work-service";
 import { getRequestAuthUid } from "../lib/request-auth";
 import type { SalaryPayout } from "../entities/payout/types";
 import { listUsersForAdmin, type UserListItem } from "../entities/user/user-service";
 import { firestoreActionError } from "../shared/firestore-errors";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
 import { DateInputWithCalendar } from "../components/date-input-with-calendar";
+import { EmployeeBalanceCard } from "../components/employee-balance-card";
 
 /** Локальна дата YYYY-MM-DD без зсуву через UTC. */
 function formatLocalYMD(d: Date): string {
@@ -54,6 +56,8 @@ export function ExpensesScreen() {
   const [items, setItems] = useState<SalaryPayout[]>([]);
   const [employees, setEmployees] = useState<UserListItem[]>([]);
   const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
+  /** Лише employee: сума робіт для картки балансу. */
+  const [employeeEarnedTotal, setEmployeeEarnedTotal] = useState(0);
 
   const [datePreset, setDatePreset] = useState<DateFilterPreset>("all");
   const [dateYear, setDateYear] = useState(() => String(new Date().getFullYear()));
@@ -210,6 +214,12 @@ export function ExpensesScreen() {
   }, [dateFrom, dateMonth, datePreset, dateTo, dateYear, items]);
 
   const filteredTotal = useMemo(() => filteredItems.reduce((acc, item) => acc + (item.amount ?? 0), 0), [filteredItems]);
+
+  const employeeBalance = useMemo(() => {
+    if (user?.role !== "employee") return null;
+    const paidOut = items.reduce((s, p) => s + (p.amount ?? 0), 0);
+    return { earned: employeeEarnedTotal, paidOut };
+  }, [user?.role, items, employeeEarnedTotal]);
   const pageCount = useMemo(() => Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE)), [filteredItems.length]);
   const paginatedItems = useMemo(() => {
     const from = (page - 1) * PAGE_SIZE;
@@ -232,6 +242,11 @@ export function ExpensesScreen() {
       const rows = await listSalaryPayoutsForViewer({ uid: expectedUid, role });
       if (getRequestAuthUid() !== expectedUid) return;
       setItems(rows);
+      if (role === "employee") {
+        const works = await listWorkEntriesForViewer({ uid: expectedUid, role });
+        if (getRequestAuthUid() !== expectedUid) return;
+        setEmployeeEarnedTotal(works.reduce((s, w) => s + (w.amount ?? 0), 0));
+      }
     } catch {
       setError("Не вдалося оновити список виплат.");
     }
@@ -243,17 +258,27 @@ export function ExpensesScreen() {
     setError(null);
     setLoading(true);
     try {
-      const rows = await listSalaryPayoutsForViewer({ uid: user.uid, role: user.role });
-      if (getRequestAuthUid() !== expectedUid) return;
-      setItems(rows);
-      if (user.role === "admin") {
-        try {
-          const users = await listUsersForAdmin();
-          if (getRequestAuthUid() !== expectedUid) return;
-          setEmployees(users);
-        } catch {
-          // Не блокуємо завантаження витрат, якщо список працівників недоступний.
-          setEmployees([]);
+      if (user.role === "employee") {
+        const [rows, works] = await Promise.all([
+          listSalaryPayoutsForViewer({ uid: user.uid, role: user.role }),
+          listWorkEntriesForViewer({ uid: user.uid, role: user.role }),
+        ]);
+        if (getRequestAuthUid() !== expectedUid) return;
+        setItems(rows);
+        setEmployeeEarnedTotal(works.reduce((s, w) => s + (w.amount ?? 0), 0));
+      } else {
+        const rows = await listSalaryPayoutsForViewer({ uid: user.uid, role: user.role });
+        if (getRequestAuthUid() !== expectedUid) return;
+        setItems(rows);
+        setEmployeeEarnedTotal(0);
+        if (user.role === "admin") {
+          try {
+            const users = await listUsersForAdmin();
+            if (getRequestAuthUid() !== expectedUid) return;
+            setEmployees(users);
+          } catch {
+            setEmployees([]);
+          }
         }
       }
     } catch {
@@ -267,6 +292,7 @@ export function ExpensesScreen() {
     if (!user) {
       setItems([]);
       setEmployees([]);
+      setEmployeeEarnedTotal(0);
       setAssigneeId("");
       setAssigneeEmail("");
       setError(null);
@@ -274,6 +300,7 @@ export function ExpensesScreen() {
     }
     setItems([]);
     setEmployees([]);
+    setEmployeeEarnedTotal(0);
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.role]);
@@ -325,6 +352,9 @@ export function ExpensesScreen() {
           contentContainerStyle={paginatedItems.length ? undefined : styles.emptyContainer}
           ListHeaderComponent={
             <View style={styles.filters}>
+              {employeeBalance ? (
+                <EmployeeBalanceCard earned={employeeBalance.earned} paidOut={employeeBalance.paidOut} />
+              ) : null}
               <Pressable
                 style={styles.secondaryButton}
                 onPress={() => setDatePreset((prev) => (prev === "all" ? "month" : prev === "month" ? "year" : prev === "year" ? "range" : "all"))}

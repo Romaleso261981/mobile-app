@@ -12,11 +12,14 @@ import {
   listWorkEntriesForViewer,
   updateWorkEntryAdmin,
 } from "../entities/work/work-service";
+import { listSalaryPayoutsForViewer } from "../entities/payout/payout-service";
+import type { SalaryPayout } from "../entities/payout/types";
 import { getRequestAuthUid } from "../lib/request-auth";
 import type { WorkEntry } from "../entities/work/types";
 import { firestoreActionError } from "../shared/firestore-errors";
 import { matchesDateString, type DateFilterPreset } from "../shared/date-filter";
 import { DateInputWithCalendar } from "../components/date-input-with-calendar";
+import { EmployeeBalanceCard } from "../components/employee-balance-card";
 
 /** Локальна дата YYYY-MM-DD без зсуву через UTC. */
 function formatLocalYMD(d: Date): string {
@@ -55,6 +58,8 @@ export function WorksScreen() {
   const [error, setError] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<WorkEntry[]>([]);
+  /** Лише employee: виплати для підрахунку «зароблено / виплачено / залишок». */
+  const [employeePayouts, setEmployeePayouts] = useState<SalaryPayout[]>([]);
 
   const [datePreset, setDatePreset] = useState<DateFilterPreset>("all");
   const [dateYear, setDateYear] = useState(() => String(new Date().getFullYear()));
@@ -129,6 +134,13 @@ export function WorksScreen() {
   }, [dateFrom, dateMonth, datePreset, dateTo, dateYear, filterCategoryId, filterEmployeeId, items]);
 
   const filteredTotal = useMemo(() => filteredItems.reduce((acc, item) => acc + (item.amount ?? 0), 0), [filteredItems]);
+
+  const employeeBalance = useMemo(() => {
+    if (user?.role !== "employee") return null;
+    const earned = items.reduce((s, i) => s + (i.amount ?? 0), 0);
+    const paidOut = employeePayouts.reduce((s, p) => s + (p.amount ?? 0), 0);
+    return { earned, paidOut };
+  }, [user?.role, items, employeePayouts]);
   const pageCount = useMemo(() => Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE)), [filteredItems.length]);
   const paginatedItems = useMemo(() => {
     const from = (page - 1) * PAGE_SIZE;
@@ -151,6 +163,11 @@ export function WorksScreen() {
       const works = await listWorkEntriesForViewer({ uid: expectedUid, role });
       if (getRequestAuthUid() !== expectedUid) return;
       setItems(works);
+      if (role === "employee") {
+        const payouts = await listSalaryPayoutsForViewer({ uid: expectedUid, role });
+        if (getRequestAuthUid() !== expectedUid) return;
+        setEmployeePayouts(payouts);
+      }
     } catch {
       setError("Не вдалося оновити список робіт.");
     }
@@ -162,11 +179,25 @@ export function WorksScreen() {
     setError(null);
     setLoading(true);
     try {
-      const [cats, works] = await Promise.all([listCategories(), listWorkEntriesForViewer({ uid: user.uid, role: user.role })]);
-      if (getRequestAuthUid() !== expectedUid) return;
-      setCategories(cats);
-      setItems(works);
-      if (!formCategoryId && cats[0]) setFormCategoryId(cats[0].id);
+      if (user.role === "employee") {
+        const [cats, works, payouts] = await Promise.all([
+          listCategories(),
+          listWorkEntriesForViewer({ uid: user.uid, role: user.role }),
+          listSalaryPayoutsForViewer({ uid: user.uid, role: user.role }),
+        ]);
+        if (getRequestAuthUid() !== expectedUid) return;
+        setCategories(cats);
+        setItems(works);
+        setEmployeePayouts(payouts);
+        if (!formCategoryId && cats[0]) setFormCategoryId(cats[0].id);
+      } else {
+        const [cats, works] = await Promise.all([listCategories(), listWorkEntriesForViewer({ uid: user.uid, role: user.role })]);
+        if (getRequestAuthUid() !== expectedUid) return;
+        setCategories(cats);
+        setItems(works);
+        setEmployeePayouts([]);
+        if (!formCategoryId && cats[0]) setFormCategoryId(cats[0].id);
+      }
     } catch (e) {
       setError("Не вдалося завантажити дані.");
     } finally {
@@ -177,6 +208,7 @@ export function WorksScreen() {
   useEffect(() => {
     if (!user) {
       setItems([]);
+      setEmployeePayouts([]);
       setCategories([]);
       setFormCategoryId("");
       setError(null);
@@ -184,6 +216,7 @@ export function WorksScreen() {
     }
     setFormCategoryId("");
     setItems([]);
+    setEmployeePayouts([]);
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.role]);
@@ -295,6 +328,9 @@ export function WorksScreen() {
           contentContainerStyle={paginatedItems.length ? undefined : styles.emptyContainer}
           ListHeaderComponent={
             <View style={styles.filters}>
+              {employeeBalance ? (
+                <EmployeeBalanceCard earned={employeeBalance.earned} paidOut={employeeBalance.paidOut} />
+              ) : null}
               <View style={styles.row}>
                 <Pressable
                   style={[styles.picker, styles.rowGrow]}
