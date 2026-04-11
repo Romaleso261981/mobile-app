@@ -15,6 +15,19 @@ const UK_MONTH_NAMES = [
   "Грудень",
 ] as const;
 
+/** Напр. `2026-04` → «Квітень 2026». */
+export function formatYearMonthUkrainian(ym: string): string {
+  const t = ym.trim();
+  if (!/^\d{4}-\d{2}$/.test(t)) return t;
+  const parts = t.split("-");
+  const yy = parts[0] ?? "";
+  const mo = Number(parts[1]);
+  if (mo >= 1 && mo <= 12) {
+    return `${UK_MONTH_NAMES[mo - 1]} ${yy}`;
+  }
+  return t;
+}
+
 /**
  * Короткий текст для UI: який період обрано у фільтрі дат.
  */
