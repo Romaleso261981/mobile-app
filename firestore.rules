@@ -2,39 +2,51 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isSignedIn() {
+    function isAuth() {
       return request.auth != null;
     }
 
-    // Роль admin зберігається в users/{uid} (див. auth-context).
+    // Документ users/{uid} має містити role == "admin" (рядок). exists() — безпечно, якщо документа ще немає.
     function isAdmin() {
-      return isSignedIn() &&
+      return isAuth() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
     }
 
     match /users/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow create: if isSignedIn() && request.auth.uid == userId;
+      // Свій профіль або адмін (список працівників на екрані витрат).
+      allow read: if isAuth() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAuth() && request.auth.uid == userId;
+      allow update: if isAdmin();
     }
 
-    match /categories/{catId} {
-      allow read: if isSignedIn();
-      allow create: if isAdmin();
+    match /categories/{categoryId} {
+      allow read: if isAuth();
+      allow create, update, delete: if isAdmin();
     }
 
-    match /workEntries/{entryId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      // Редагування / видалення лише для admin (працівник лише додає свої записи).
-      allow update, delete: if isSignedIn() && isAdmin();
+    match /workEntries/{workId} {
+      allow read: if isAuth() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
     }
 
     match /salaryPayouts/{payoutId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      // Витрати (виплати) додає лише admin; працівник веде лише роботи.
-      allow create: if isSignedIn() && isAdmin();
-      allow update, delete: if isSignedIn() && isAdmin();
+      allow read: if isAuth() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+
+      // Адмін — будь-які виплати; працівник — лише з userId == свій uid (узгоджено з вашим правилом).
+      allow create: if isAdmin() || (
+        isAuth() &&
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update, delete: if isAdmin();
     }
   }
 }

@@ -200,8 +200,8 @@ export function WorksScreen() {
         if (getRequestAuthUid() !== expectedUid) return;
         setEmployeePayouts(payouts);
       }
-    } catch {
-      setError("Не вдалося оновити список робіт.");
+    } catch (e) {
+      setError(firestoreActionError(e, "Не вдалося оновити список робіт."));
     }
   }
 
@@ -231,7 +231,7 @@ export function WorksScreen() {
         if (!formCategoryId && cats[0]) setFormCategoryId(cats[0].id);
       }
     } catch (e) {
-      setError("Не вдалося завантажити дані.");
+      setError(firestoreActionError(e, "Не вдалося завантажити дані."));
     } finally {
       setLoading(false);
     }
