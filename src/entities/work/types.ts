@@ -1,5 +1,6 @@
 export interface WorkEntry {
   id: string;
+  companyId: string;
   userId: string;
   userEmail: string;
   workDate: string; // YYYY-MM-DD
@@ -10,6 +11,7 @@ export interface WorkEntry {
 }
 
 export interface CreateWorkEntryPayload {
+  companyId: string;
   userId: string;
   userEmail: string;
   workDate: string; // YYYY-MM-DD

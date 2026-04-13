@@ -80,7 +80,7 @@ export function LoginScreen({ navigation }: Props) {
         >
           <Text style={styles.buttonText}>{loading ? "..." : "Увійти"}</Text>
         </Pressable>
-        <Pressable onPress={() => navigation.navigate("AuthRegister")}>
+        <Pressable onPress={() => navigation.navigate("AuthRegisterHub")}>
           <Text style={styles.link}>Немає акаунта? Реєстрація</Text>
         </Pressable>
           </View>

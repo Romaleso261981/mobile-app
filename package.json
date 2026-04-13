@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
+    "migrate:legacy-company": "node scripts/migrate-legacy-to-company.cjs",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
@@ -25,6 +26,7 @@
     "react-native-screens": "~4.16.0"
   },
   "devDependencies": {
+    "firebase-admin": "^13.6.0",
     "@types/react": "~19.1.0",
     "eas-cli": "^18.4.0",
     "typescript": "~5.9.2"

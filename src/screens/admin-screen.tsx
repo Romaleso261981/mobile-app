@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, Style
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/auth-context";
+import { getCompanyJoinCode } from "../entities/company/company-service";
 import { addCategory, listCategories } from "../entities/category/category-service";
 import type { Category } from "../entities/category/types";
 import { deleteSalaryPayoutAdmin, listSalaryPayoutsForViewer } from "../entities/payout/payout-service";
@@ -37,6 +38,7 @@ export function AdminScreen() {
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [categoryName, setCategoryName] = useState("");
   const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editWorkId, setEditWorkId] = useState<string | null>(null);
@@ -57,14 +59,15 @@ export function AdminScreen() {
   }, [payouts, payoutsPage]);
 
   async function loadAll() {
-    if (!user || !isAdmin) return;
+    if (!user || !isAdmin || !user.companyId) return;
+    const companyId = user.companyId;
     setError(null);
     setLoading(true);
     try {
       const [cats, allWorks, allPayouts] = await Promise.all([
-        listCategories(),
-        listWorkEntriesForViewer({ uid: user.uid, role: "admin" }),
-        listSalaryPayoutsForViewer({ uid: user.uid, role: "admin" }),
+        listCategories(companyId),
+        listWorkEntriesForViewer({ uid: user.uid, role: "admin", companyId }),
+        listSalaryPayoutsForViewer({ uid: user.uid, role: "admin", companyId }),
       ]);
       setCategories(cats);
       setWorks(allWorks);
@@ -80,6 +83,26 @@ export function AdminScreen() {
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.role]);
+
+  useEffect(() => {
+    const companyId = user?.companyId;
+    if (!companyId) {
+      setInviteCode(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const code = await getCompanyJoinCode(companyId);
+        if (!cancelled) setInviteCode(code);
+      } catch {
+        if (!cancelled) setInviteCode(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.companyId]);
 
   useEffect(() => {
     if (worksPage > worksPageCount) setWorksPage(worksPageCount);
@@ -116,6 +139,16 @@ export function AdminScreen() {
               <Text style={styles.logoutChipText}>Вийти</Text>
             </Pressable>
           </View>
+
+          {inviteCode ? (
+            <View style={styles.inviteBanner}>
+              <Text style={styles.inviteLabel}>Код для співробітників</Text>
+              <Text style={styles.inviteCode} selectable>
+                {inviteCode}
+              </Text>
+              <Text style={styles.inviteHint}>Реєстрація → «Маю код компанії»</Text>
+            </View>
+          ) : null}
 
           <View style={styles.segmentRow}>
             <Pressable style={[styles.segmentButton, adminView === "works" ? styles.segmentButtonActive : null]} onPress={() => setAdminView("works")}>
@@ -310,10 +343,10 @@ export function AdminScreen() {
             <Pressable
               style={styles.primaryButton}
               onPress={async () => {
-                if (!user) return;
+                if (!user?.companyId) return;
                 setLoading(true);
                 try {
-                  await addCategory(categoryName, user.uid);
+                  await addCategory(categoryName, user.uid, user.companyId);
                   setCategoryName("");
                   setCreateCategoryOpen(false);
                   await loadAll();
@@ -485,6 +518,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   logoutChipText: { color: "#3158f5", fontWeight: "800", fontSize: 12 },
+  inviteBanner: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#f0f4ff",
+    borderWidth: 1,
+    borderColor: "#dbe4ff",
+    gap: 4,
+  },
+  inviteLabel: { fontSize: 12, fontWeight: "700", color: "#5b6475" },
+  inviteCode: { fontSize: 20, fontWeight: "900", letterSpacing: 2, color: "#0b1220" },
+  inviteHint: { fontSize: 12, color: "#5b6475", marginTop: 4 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   error: { color: "#ce2e2e", textAlign: "center" },
   sectionTitle: { marginTop: 6, fontWeight: "900", color: "#0b1220" },

@@ -243,15 +243,16 @@ export function ExpensesScreen() {
   }, [page, pageCount]);
 
   async function reloadPayoutItemsOnly(): Promise<void> {
-    if (!user) return;
+    if (!user?.companyId) return;
     const expectedUid = user.uid;
     const role = user.role;
+    const companyId = user.companyId;
     try {
-      const rows = await listSalaryPayoutsForViewer({ uid: expectedUid, role });
+      const rows = await listSalaryPayoutsForViewer({ uid: expectedUid, role, companyId });
       if (getRequestAuthUid() !== expectedUid) return;
       setItems(rows);
       if (role === "employee") {
-        const works = await listWorkEntriesForViewer({ uid: expectedUid, role });
+        const works = await listWorkEntriesForViewer({ uid: expectedUid, role, companyId });
         if (getRequestAuthUid() !== expectedUid) return;
         setEmployeeWorks(works);
       }
@@ -261,27 +262,28 @@ export function ExpensesScreen() {
   }
 
   async function loadAll() {
-    if (!user) return;
+    if (!user?.companyId) return;
     const expectedUid = user.uid;
+    const companyId = user.companyId;
     setError(null);
     setLoading(true);
     try {
       if (user.role === "employee") {
         const [rows, works] = await Promise.all([
-          listSalaryPayoutsForViewer({ uid: user.uid, role: user.role }),
-          listWorkEntriesForViewer({ uid: user.uid, role: user.role }),
+          listSalaryPayoutsForViewer({ uid: user.uid, role: user.role, companyId }),
+          listWorkEntriesForViewer({ uid: user.uid, role: user.role, companyId }),
         ]);
         if (getRequestAuthUid() !== expectedUid) return;
         setItems(rows);
         setEmployeeWorks(works);
       } else {
-        const rows = await listSalaryPayoutsForViewer({ uid: user.uid, role: user.role });
+        const rows = await listSalaryPayoutsForViewer({ uid: user.uid, role: user.role, companyId });
         if (getRequestAuthUid() !== expectedUid) return;
         setItems(rows);
         setEmployeeWorks([]);
         if (user.role === "admin") {
           try {
-            const users = await listUsersForAdmin();
+            const users = await listUsersForAdmin(companyId);
             if (getRequestAuthUid() !== expectedUid) return;
             setEmployees(users);
           } catch {
@@ -701,7 +703,9 @@ export function ExpensesScreen() {
                   const parsed = Number(amount.replace(",", "."));
                   if (!Number.isFinite(parsed)) throw new Error("invalid amount");
                   if (payoutModal === "create") {
+                    if (!user.companyId) return;
                     await createSalaryPayout({
+                      companyId: user.companyId,
                       userId: targetUserId,
                       userEmail: targetUserEmail,
                       payoutDate: payoutDate.trim(),

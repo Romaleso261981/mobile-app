@@ -1,27 +1,57 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, type User } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  type User,
+} from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { getFirebaseAuth, getFirebaseDb } from "../lib/firebase";
+import {
+  commitNewCompanyAndAdminProfile,
+  ensureUniqueJoinCode,
+  normalizeJoinCode,
+  resolveCompanyIdFromJoinCode,
+} from "../entities/company/company-service";
 
 export type Role = "admin" | "employee";
-export type AppUser = { uid: string; email: string; role: Role };
+export type AppUser = {
+  uid: string;
+  email: string;
+  role: Role;
+  /** `null` — обліковий запис без компанії (застарілі дані або помилка). */
+  companyId: string | null;
+  companyName: string | null;
+};
 
 type AuthContextValue = {
   user: AppUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  /** Перший користувач компанії — адміністратор. */
+  registerCompany: (companyName: string, email: string, password: string) => Promise<void>;
+  /** Співробітник за кодом запрошення. */
+  registerWithJoinCode: (joinCode: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function resolveRole(firebaseUser: User): Promise<Role> {
+async function loadAppUser(firebaseUser: User): Promise<AppUser> {
   const db = getFirebaseDb();
   const ref = doc(db, "users", firebaseUser.uid);
   const snap = await getDoc(ref);
-  const data = snap.exists() ? (snap.data() as { role?: Role }) : null;
-  return data?.role === "admin" ? "admin" : "employee";
+  const data = snap.exists()
+    ? (snap.data() as { role?: Role; companyId?: string; companyName?: string })
+    : {};
+  return {
+    uid: firebaseUser.uid,
+    email: firebaseUser.email ?? "",
+    role: data.role === "admin" ? "admin" : "employee",
+    companyId: typeof data.companyId === "string" ? data.companyId : null,
+    companyName: typeof data.companyName === "string" ? data.companyName : null,
+  };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -39,12 +69,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const db = getFirebaseDb();
         try {
           await setDoc(doc(db, "users", firebaseUser.uid), { email: firebaseUser.email }, { merge: true });
-          const role = await resolveRole(firebaseUser);
-          setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role });
+          const appUser = await loadAppUser(firebaseUser);
+          setUser(appUser);
         } catch {
-          // Якщо Firestore недоступний або відмовляє в правилах — не залишаємо сесію Auth «живою»
-          // без user у React (інакше мобільний вхід здається зламаним, тоді як веб без цього кроку працює).
-          setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role: "employee" });
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            role: "employee",
+            companyId: null,
+            companyName: null,
+          });
         }
       } finally {
         setLoading(false);
@@ -61,28 +95,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(true);
         try {
           await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
-          // Не викликати setLoading(false) тут: onAuthStateChanged ще асинхронно
-          // підтягує роль з Firestore. Інакше коротко буде loading=false і user=null —
-          // навігація покаже екран входу замість застосунку.
         } catch (e) {
           setLoading(false);
           throw e;
         }
       },
-      register: async (email, password) => {
+      registerCompany: async (companyName, email, password) => {
         setLoading(true);
         try {
-          const cred = await createUserWithEmailAndPassword(getFirebaseAuth(), email, password);
+          const cred = await createUserWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
+          const joinCode = await ensureUniqueJoinCode();
+          await commitNewCompanyAndAdminProfile(cred.user.uid, cred.user.email ?? email.trim(), companyName, joinCode);
+        } catch (e) {
+          setLoading(false);
+          throw e;
+        }
+      },
+      registerWithJoinCode: async (joinCode, email, password) => {
+        setLoading(true);
+        try {
+          const jc = normalizeJoinCode(joinCode);
+          if (jc.length < 6) {
+            setLoading(false);
+            throw new Error("INVALID_JOIN_CODE");
+          }
+          const companyId = await resolveCompanyIdFromJoinCode(jc);
+          if (!companyId) {
+            setLoading(false);
+            throw new Error("INVALID_JOIN_CODE");
+          }
+          const cred = await createUserWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
           const db = getFirebaseDb();
           await setDoc(doc(db, "users", cred.user.uid), {
             role: "employee",
-            email: cred.user.email ?? email,
+            email: cred.user.email ?? email.trim(),
+            companyId,
+            joinCode: jc,
           });
         } catch (e) {
           setLoading(false);
           throw e;
         }
-        // setLoading(false) після успіху — у onAuthStateChanged
       },
       logout: async () => {
         await signOut(getFirebaseAuth());
@@ -99,4 +152,3 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
-

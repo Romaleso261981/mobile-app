@@ -6,47 +6,116 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Документ users/{uid} має містити role == "admin" (рядок). exists() — безпечно, якщо документа ще немає.
-    function isAdmin() {
-      return isAuth() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    function userPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function userDocExists() {
+      return isAuth() && exists(userPath());
+    }
+
+    function userData() {
+      return get(userPath()).data;
+    }
+
+    function callerCompanyId() {
+      return userData().companyId;
+    }
+
+    function callerIsAdmin() {
+      return userDocExists() && userData().role == "admin";
+    }
+
+    function sameCompanyData(data) {
+      return userDocExists() && data.companyId == callerCompanyId();
+    }
+
+    /** Реєстрація співробітника за кодом (поле joinCode у профілі). */
+    function employeeJoinCreatesValidUser() {
+      return request.resource.data.role == "employee" &&
+        request.resource.data.companyId is string &&
+        request.resource.data.joinCode is string &&
+        exists(/databases/$(database)/documents/companyJoinCodes/$(request.resource.data.joinCode)) &&
+        get(/databases/$(database)/documents/companyJoinCodes/$(request.resource.data.joinCode)).data.companyId
+          == request.resource.data.companyId;
+    }
+
+    /** Адміністратор компанії після створення організації (у тому ж batch має з’явитися companies/{id}). */
+    function adminCreatesOwnCompanyUser() {
+      return request.resource.data.role == "admin" &&
+        request.resource.data.companyId is string &&
+        exists(/databases/$(database)/documents/companies/$(request.resource.data.companyId)) &&
+        get(/databases/$(database)/documents/companies/$(request.resource.data.companyId)).data.createdByUid
+          == request.auth.uid;
     }
 
     match /users/{userId} {
-      // Свій профіль або адмін (список працівників на екрані витрат).
-      allow read: if isAuth() && (request.auth.uid == userId || isAdmin());
-      allow create: if isAuth() && request.auth.uid == userId;
-      allow update: if isAdmin();
+      allow read: if isAuth() && (
+        request.auth.uid == userId ||
+        (callerIsAdmin() && resource.data.companyId == callerCompanyId())
+      );
+
+      allow create: if isAuth() && request.auth.uid == userId && (
+        employeeJoinCreatesValidUser() ||
+        adminCreatesOwnCompanyUser()
+      );
+
+      allow update: if isAuth() && request.auth.uid == userId &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.companyId == resource.data.companyId;
+
+      allow delete: if false;
+    }
+
+    match /companies/{companyId} {
+      allow read: if isAuth() && callerCompanyId() == companyId;
+      allow create: if isAuth() && request.resource.data.createdByUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /companyJoinCodes/{code} {
+      allow get: if true;
+      allow create: if isAuth() &&
+        request.resource.data.companyId is string &&
+        exists(/databases/$(database)/documents/companies/$(request.resource.data.companyId)) &&
+        get(/databases/$(database)/documents/companies/$(request.resource.data.companyId)).data.createdByUid
+          == request.auth.uid;
+      allow update, delete: if false;
+      allow list: if false;
     }
 
     match /categories/{categoryId} {
-      allow read: if isAuth();
-      allow create, update, delete: if isAdmin();
+      allow read: if isAuth() && sameCompanyData(resource.data);
+      allow create: if callerIsAdmin() &&
+        request.resource.data.companyId == callerCompanyId() &&
+        request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if callerIsAdmin() && resource.data.companyId == callerCompanyId();
     }
 
     match /workEntries/{workId} {
-      allow read: if isAuth() && (
+      allow read: if isAuth() && sameCompanyData(resource.data) && (
         resource.data.userId == request.auth.uid ||
-        isAdmin()
+        callerIsAdmin()
       );
 
-      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow create: if isAuth() &&
+        request.resource.data.companyId == callerCompanyId() &&
+        request.resource.data.userId == request.auth.uid;
+
+      allow update, delete: if callerIsAdmin() && resource.data.companyId == callerCompanyId();
     }
 
     match /salaryPayouts/{payoutId} {
-      allow read: if isAuth() && (
+      allow read: if isAuth() && sameCompanyData(resource.data) && (
         resource.data.userId == request.auth.uid ||
-        isAdmin()
+        callerIsAdmin()
       );
 
-      // Адмін — будь-які виплати; працівник — лише з userId == свій uid (узгоджено з вашим правилом).
-      allow create: if isAdmin() || (
-        isAuth() &&
-        request.resource.data.userId == request.auth.uid
-      );
-      allow update, delete: if isAdmin();
+      allow create: if isAuth() &&
+        request.resource.data.companyId == callerCompanyId() &&
+        (callerIsAdmin() || request.resource.data.userId == request.auth.uid);
+
+      allow update, delete: if callerIsAdmin() && resource.data.companyId == callerCompanyId();
     }
   }
 }

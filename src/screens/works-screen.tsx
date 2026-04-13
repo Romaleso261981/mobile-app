@@ -188,15 +188,16 @@ export function WorksScreen() {
   }, [page, pageCount]);
 
   async function reloadWorkItemsOnly(): Promise<void> {
-    if (!user) return;
+    if (!user?.companyId) return;
     const expectedUid = user.uid;
     const role = user.role;
+    const companyId = user.companyId;
     try {
-      const works = await listWorkEntriesForViewer({ uid: expectedUid, role });
+      const works = await listWorkEntriesForViewer({ uid: expectedUid, role, companyId });
       if (getRequestAuthUid() !== expectedUid) return;
       setItems(works);
       if (role === "employee") {
-        const payouts = await listSalaryPayoutsForViewer({ uid: expectedUid, role });
+        const payouts = await listSalaryPayoutsForViewer({ uid: expectedUid, role, companyId });
         if (getRequestAuthUid() !== expectedUid) return;
         setEmployeePayouts(payouts);
       }
@@ -206,16 +207,17 @@ export function WorksScreen() {
   }
 
   async function loadAll() {
-    if (!user) return;
+    if (!user?.companyId) return;
     const expectedUid = user.uid;
+    const companyId = user.companyId;
     setError(null);
     setLoading(true);
     try {
       if (user.role === "employee") {
         const [cats, works, payouts] = await Promise.all([
-          listCategories(),
-          listWorkEntriesForViewer({ uid: user.uid, role: user.role }),
-          listSalaryPayoutsForViewer({ uid: user.uid, role: user.role }),
+          listCategories(companyId),
+          listWorkEntriesForViewer({ uid: user.uid, role: user.role, companyId }),
+          listSalaryPayoutsForViewer({ uid: user.uid, role: user.role, companyId }),
         ]);
         if (getRequestAuthUid() !== expectedUid) return;
         setCategories(cats);
@@ -223,7 +225,10 @@ export function WorksScreen() {
         setEmployeePayouts(payouts);
         if (!formCategoryId && cats[0]) setFormCategoryId(cats[0].id);
       } else {
-        const [cats, works] = await Promise.all([listCategories(), listWorkEntriesForViewer({ uid: user.uid, role: user.role })]);
+        const [cats, works] = await Promise.all([
+          listCategories(companyId),
+          listWorkEntriesForViewer({ uid: user.uid, role: user.role, companyId }),
+        ]);
         if (getRequestAuthUid() !== expectedUid) return;
         setCategories(cats);
         setItems(works);
@@ -626,7 +631,7 @@ export function WorksScreen() {
               style={[styles.secondaryButton, styles.modalActionButton, loading ? styles.disabledButton : null]}
               disabled={loading}
               onPress={async () => {
-                if (!user) return;
+                if (!user?.companyId) return;
                 const validationError = validateCreateWorkForm(workDate, formCategoryId, description, categories);
                 if (validationError) {
                   setCreateModalError(validationError);
@@ -644,6 +649,7 @@ export function WorksScreen() {
                       ? Number(amount.replace(",", "."))
                       : undefined;
                   await createWorkEntry({
+                    companyId: user.companyId,
                     userId: user.uid,
                     userEmail: user.email,
                     workDate: workDate.trim(),

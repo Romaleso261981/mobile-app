@@ -30,7 +30,7 @@ export function AppTabs() {
   }, [user?.uid]);
 
   useEffect(() => {
-    if (user?.role !== "employee" || !user.uid) {
+    if (user?.role !== "employee" || !user.uid || !user.companyId) {
       setEntrySummaryVisible(false);
       setEntrySummaryData(null);
       return;
@@ -41,9 +41,11 @@ export function AppTabs() {
     (async () => {
       try {
         const uid = user.uid;
+        const companyId = user.companyId;
+        if (!companyId) return;
         const [works, payouts] = await Promise.all([
-          listWorkEntriesForViewer({ uid, role: "employee" }),
-          listSalaryPayoutsForViewer({ uid, role: "employee" }),
+          listWorkEntriesForViewer({ uid, role: "employee", companyId }),
+          listSalaryPayoutsForViewer({ uid, role: "employee", companyId }),
         ]);
         if (cancelled || getRequestAuthUid() !== uid) return;
 
