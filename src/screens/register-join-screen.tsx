@@ -21,7 +21,9 @@ export function RegisterJoinScreen({ navigation }: Props) {
   const [joinCode, setJoinCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [passwordConfirmVisible, setPasswordConfirmVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -80,14 +82,49 @@ export function RegisterJoinScreen({ navigation }: Props) {
                 <Ionicons name={passwordVisible ? "eye-off-outline" : "eye-outline"} size={22} color="#5b6475" />
               </Pressable>
             </View>
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={styles.passwordInput}
+                value={passwordConfirm}
+                onChangeText={setPasswordConfirm}
+                secureTextEntry={!passwordConfirmVisible}
+                placeholder="Підтвердження пароля"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="password-new"
+                textContentType="newPassword"
+              />
+              <Pressable
+                style={styles.eyeButton}
+                onPress={() => setPasswordConfirmVisible((v) => !v)}
+                accessibilityLabel={passwordConfirmVisible ? "Приховати підтвердження" : "Показати підтвердження пароля"}
+                accessibilityRole="button"
+                hitSlop={8}
+              >
+                <Ionicons name={passwordConfirmVisible ? "eye-off-outline" : "eye-outline"} size={22} color="#5b6475" />
+              </Pressable>
+            </View>
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Pressable
               style={[styles.button, loading ? styles.buttonDisabled : null]}
               disabled={loading}
               onPress={async () => {
                 setError(null);
+                const mail = email.trim();
+                if (!mail) {
+                  setError("Введіть email.");
+                  return;
+                }
+                if (password.length < 6) {
+                  setError("Пароль має бути не коротшим за 6 символів.");
+                  return;
+                }
+                if (password !== passwordConfirm) {
+                  setError("Паролі не збігаються. Введіть однакові значення в обох полях.");
+                  return;
+                }
                 try {
-                  await registerWithJoinCode(joinCode, email.trim(), password);
+                  await registerWithJoinCode(joinCode, mail, password);
                 } catch (e) {
                   setError(joinRegisterErrorMessage(e));
                 }

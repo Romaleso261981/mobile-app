@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "migrate:legacy-company": "node scripts/migrate-legacy-to-company.cjs",
+    "migrate:legacy-company": "GOOGLE_APPLICATION_CREDENTIALS=\"$HOME/Desktop/tasktrackpro-7d85f-firebase-adminsdk-fbsvc-bca9625872.json\" node scripts/migrate-legacy-to-company.cjs",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",

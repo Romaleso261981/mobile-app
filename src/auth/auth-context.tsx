@@ -107,8 +107,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const joinCode = await ensureUniqueJoinCode();
           await commitNewCompanyAndAdminProfile(cred.user.uid, cred.user.email ?? email.trim(), companyName, joinCode);
         } catch (e) {
-          setLoading(false);
           throw e;
+        } finally {
+          setLoading(false);
         }
       },
       registerWithJoinCode: async (joinCode, email, password) => {
@@ -116,12 +117,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const jc = normalizeJoinCode(joinCode);
           if (jc.length < 6) {
-            setLoading(false);
             throw new Error("INVALID_JOIN_CODE");
           }
           const companyId = await resolveCompanyIdFromJoinCode(jc);
           if (!companyId) {
-            setLoading(false);
             throw new Error("INVALID_JOIN_CODE");
           }
           const cred = await createUserWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
@@ -133,8 +132,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             joinCode: jc,
           });
         } catch (e) {
-          setLoading(false);
           throw e;
+        } finally {
+          setLoading(false);
         }
       },
       logout: async () => {

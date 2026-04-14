@@ -14,7 +14,9 @@ export function RegisterCompanyScreen({ navigation }: Props) {
   const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [passwordConfirmVisible, setPasswordConfirmVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -32,6 +34,9 @@ export function RegisterCompanyScreen({ navigation }: Props) {
           <View style={styles.form}>
             <Text style={styles.title}>Нова компанія</Text>
             <Text style={styles.subtitle}>Перший зареєстрований користувач стає адміністратором.</Text>
+            <Text style={styles.hint}>
+              Один email — один акаунт. Якщо цей email уже зайнятий, нова компанія не створиться — використайте інший email.
+            </Text>
             <TextInput
               style={styles.input}
               value={companyName}
@@ -73,18 +78,54 @@ export function RegisterCompanyScreen({ navigation }: Props) {
                 <Ionicons name={passwordVisible ? "eye-off-outline" : "eye-outline"} size={22} color="#5b6475" />
               </Pressable>
             </View>
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={styles.passwordInput}
+                value={passwordConfirm}
+                onChangeText={setPasswordConfirm}
+                secureTextEntry={!passwordConfirmVisible}
+                placeholder="Підтвердження пароля"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="password-new"
+                textContentType="newPassword"
+              />
+              <Pressable
+                style={styles.eyeButton}
+                onPress={() => setPasswordConfirmVisible((v) => !v)}
+                accessibilityLabel={passwordConfirmVisible ? "Приховати підтвердження" : "Показати підтвердження пароля"}
+                accessibilityRole="button"
+                hitSlop={8}
+              >
+                <Ionicons name={passwordConfirmVisible ? "eye-off-outline" : "eye-outline"} size={22} color="#5b6475" />
+              </Pressable>
+            </View>
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Pressable
               style={[styles.button, loading ? styles.buttonDisabled : null]}
               disabled={loading}
               onPress={async () => {
                 setError(null);
-                if (!companyName.trim()) {
+                const name = companyName.trim();
+                const mail = email.trim();
+                if (!name) {
                   setError("Введіть назву компанії.");
                   return;
                 }
+                if (!mail) {
+                  setError("Введіть email.");
+                  return;
+                }
+                if (password.length < 6) {
+                  setError("Пароль має бути не коротшим за 6 символів.");
+                  return;
+                }
+                if (password !== passwordConfirm) {
+                  setError("Паролі не збігаються. Введіть однакові значення в обох полях.");
+                  return;
+                }
                 try {
-                  await registerCompany(companyName.trim(), email.trim(), password);
+                  await registerCompany(name, mail, password);
                 } catch (e) {
                   setError(authErrorMessage(e, "register"));
                 }
@@ -114,7 +155,8 @@ const styles = StyleSheet.create({
   },
   form: { gap: 12 },
   title: { fontSize: 22, fontWeight: "700", textAlign: "center", marginBottom: 4 },
-  subtitle: { fontSize: 14, color: "#5b6475", textAlign: "center", marginBottom: 8, lineHeight: 20 },
+  subtitle: { fontSize: 14, color: "#5b6475", textAlign: "center", marginBottom: 4, lineHeight: 20 },
+  hint: { fontSize: 13, color: "#7b8599", textAlign: "center", marginBottom: 8, lineHeight: 18 },
   input: { borderWidth: 1, borderColor: "#dbe1ef", borderRadius: 10, padding: 12, backgroundColor: "#fff" },
   passwordRow: {
     flexDirection: "row",
